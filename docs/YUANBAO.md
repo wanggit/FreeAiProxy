@@ -110,9 +110,11 @@ Tencent Docs，没有 Search。因此 `yuanbao-hunyuan` 不带显式搜索；强
 ## 9. AI 生图
 
 - 元宝一次生成 4 张图，约 15–25 秒。
-- 生成的 `<img>` 来自 `hunyuan-prod.../text2img/...`，`src` 是带签名的缩略图 URL：
-  - 去掉 `&imageMogr2...` 后可下载原始 PNG（约 2.5MB）；
-  - 网关下载原图保存到 `data/generated/`，返回 `/v1/files/<name>`。
+- 生成的 `<img>` 来自 `hunyuan-prod.../text2img/...`，`src` 是带签名的缩略图 URL。
+- 无水印下载：悬停图片后右下角出现 `.dic-card-item__download`，点击并捕获
+  Playwright download，保存到 `data/generated/`，返回 `/v1/files/<name>`。
+  账号需在元宝设置中开启“无水印保存”。
+- 如果下载图标未出现，回退为去掉 `&imageMogr2...` 后直接下载原图；该方式带水印。
 - `POST /v1/images/generations` 支持 `n` 1–4、`response_format=url|b64_json`。
 - 聊天模型 `yuanbao-image` 返回 4 个本地 markdown 图片链接。
 

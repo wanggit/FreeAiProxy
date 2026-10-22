@@ -129,7 +129,8 @@ curl http://127.0.0.1:8000/v1/images/generations \
 ```
 
 - 元宝每次网页生成 4 张图；`n` 取 1–4，默认 4。
-- 原图会下载到 `data/generated/`，响应返回本地 URL：
+- 网关会悬停图片并点击右下角下载图标，获取无水印原图（需在元宝设置中开启
+  “无水印保存”），保存到 `data/generated/`，响应返回本地 URL：
   `http://127.0.0.1:8000/v1/files/<name>`。
 - `response_format` 可选 `url`（默认）或 `b64_json`。
 - 也可以用 `/v1/chat/completions` 调 `yuanbao-image`，返回 4 个 markdown 图片链接。

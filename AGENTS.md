@@ -28,7 +28,8 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - Selecting Hy4 auto-switches to Expert. Align model + mode before every send; for Hy3 modes select Hy3 first, then the mode.
 - The answer is `.hyc-common-markdown` inside the last AI item, excluding ancestors containing `__think` and markdown with `hyc-common-markdown-style-cot`. Thinking traces are intentionally not returned; Expert and PPT process blocks are filtered the same way.
 - Completion: stop button (`aria-label="Stop Answering"`) gone, `Send` visible, non-empty answer stable. A short answer can appear after the stop button disappears, so never finalize on button state alone. `.hyc-content-md-done` is only a hint.
-- Image generation: take `img` URLs containing `text2img`/`hunyuan-prod` from the last AI item and strip `&imageMogr2...` to get the full-resolution PNG. Download to `data/generated/` and serve via `/v1/files/<name>`; do not expose the signed COS URL.
+- Image generation: find `img` elements containing `text2img`/`hunyuan-prod` in the last AI item, hover each one and click `.dic-card-item__download` in its bottom-right corner, then capture the Playwright download to get the watermark-free original. Save to `data/generated/` and serve via `/v1/files/<name>`; the signed COS URL is only a fallback and must not be exposed.
+- The UI is language-sensitive: keep `locale="en-US"` on Camoufox so headed and headless runs both render the English labels the selectors target.
 - PPT: wait for the `.pptx` file card, click it to open the workspace, hover the Download icon (`.toolbar-export-format_download...`), choose `PPTX`, and capture the Playwright download. Do not return the web file-card link as the artifact.
 - Attachments: use Add -> Upload Image / Local Files with a trusted file-chooser click; wait for image `alt` or the composer's `with-files` state. Keep original filenames.
 - All API errors must subclass `GatewayError` (`engine/errors.py`).

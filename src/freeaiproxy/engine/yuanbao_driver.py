@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import re
 import time
 from collections.abc import AsyncIterator
@@ -22,6 +23,8 @@ from freeaiproxy.engine.errors import (
 
 if TYPE_CHECKING:
     from freeaiproxy.services.models import ModelSpec
+
+logger = logging.getLogger("freeaiproxy.yuanbao")
 
 
 @dataclass
@@ -126,6 +129,35 @@ IMAGES_JS = """
     send,
     stop,
     outputting: last ? last.getAttribute('data-conv-outputting') : null,
+  };
+}
+"""
+
+IMAGE_DOWNLOAD_JS = """
+(img, dlSelector) => {
+  document.querySelectorAll('[data-fap-imgctl]').forEach(el => el.removeAttribute('data-fap-imgctl'));
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'
+      && Number(s.opacity || '1') > 0.05;
+  };
+  const ir = img.getBoundingClientRect();
+  const matches = [];
+  const selector = `${dlSelector}, [aria-label*="download" i], [class*="download" i]`;
+  for (const el of document.querySelectorAll(selector)) {
+    if (el === img || !visible(el)) continue;
+    const r = el.getBoundingClientRect();
+    const cx = r.x + r.width / 2;
+    const cy = r.y + r.height / 2;
+    if (cx < ir.left - 40 || cx > ir.right + 40 || cy < ir.top - 40 || cy > ir.bottom + 40) continue;
+    matches.push(el);
+  }
+  matches.forEach((el, i) => el.setAttribute('data-fap-imgctl', String(i)));
+  return {
+    image: [Math.round(ir.left), Math.round(ir.top), Math.round(ir.width), Math.round(ir.height)],
+    matched: matches.length,
+    html: matches.slice(0, 2).map(el => (el.outerHTML || '').slice(0, 220)),
   };
 }
 """
@@ -341,6 +373,63 @@ class YuanbaoDriver:
             if urls and send and not stop and stable >= 2:
                 return urls
         raise UpstreamPageChangedError("the page did not produce generated images")
+
+    async def download_images(self, targets: list[Path]) -> list[Path | None]:
+        last_ai = self.page.locator(S.AI_ITEM).last
+        imgs = last_ai.locator("img")
+        picked = []
+        for i in range(await imgs.count()):
+            img = imgs.nth(i)
+            src = await img.get_attribute("src") or ""
+            if "text2img" not in src and "hunyuan-prod" not in src:
+                continue
+            if not await img.is_visible():
+                continue
+            box = await img.bounding_box()
+            if not box or box["width"] < 100 or box["height"] < 80:
+                continue
+            picked.append(img)
+
+        results: list[Path | None] = []
+        for i, target in enumerate(targets):
+            if i >= len(picked):
+                results.append(None)
+                continue
+            results.append(await self._download_image_ui(picked[i], target))
+        return results
+
+    async def _download_image_ui(self, img, target: Path) -> Path | None:
+        try:
+            await img.scroll_into_view_if_needed(timeout=5000)
+            await img.hover(timeout=5000)
+            await asyncio.sleep(0.6)
+            probe = await img.evaluate(IMAGE_DOWNLOAD_JS, S.IMAGE_DOWNLOAD_BUTTON)
+            if probe["matched"] <= 0:
+                logger.warning(
+                    "image download control not found for image at %s", probe["image"]
+                )
+                return None
+            logger.debug("image download control matched: %s", probe["html"])
+            control = self.page.locator("[data-fap-imgctl='0']").first
+            async with self.page.expect_download(timeout=30000) as info:
+                await control.click(timeout=5000)
+            download = await info.value
+            suffix = Path(download.suggested_filename or "").suffix.lower()
+            path = target
+            if suffix in (".png", ".jpg", ".jpeg", ".webp") and suffix != target.suffix.lower():
+                path = target.with_suffix(suffix)
+            await download.save_as(str(path))
+            logger.info("saved generated image via page UI: %s", path)
+            return path
+        except Exception as exc:
+            logger.warning("image UI download failed: %s", exc)
+            return None
+        finally:
+            with contextlib.suppress(Exception):
+                await self.page.evaluate(
+                    "() => document.querySelectorAll('[data-fap-imgctl]')"
+                    ".forEach(el => el.removeAttribute('data-fap-imgctl'))"
+                )
 
     async def download_ppt(self, target: Path) -> str:
         last_ai = self.page.locator(S.AI_ITEM).last

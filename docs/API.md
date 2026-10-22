@@ -372,6 +372,9 @@ POST /v1/images/generations
 Content-Type: application/json
 ```
 
+网关通过页面右下角的下载图标获取无水印原图（需在元宝设置中开启“无水印保存”），
+下载失败时才回退到图片直链。
+
 ### 5.2 请求体
 
 ```json

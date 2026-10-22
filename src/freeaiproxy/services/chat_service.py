@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -121,7 +122,7 @@ class ChatService:
             pre = await self.driver.snapshot()
             await self.driver.send_user_message(prompt, attachments=[], spec=spec)
             urls = await self.driver.wait_images(pre)
-            return await self._download_images(urls[:limit])
+            return await self._save_generated_images(urls[:limit])
         finally:
             self.queue.release()
 
@@ -166,7 +167,7 @@ class ChatService:
     async def _execute_image(self, res: Resolution, spec: ModelSpec) -> str:
         pre = await self._navigate_and_send(res, spec)
         urls = await self.driver.wait_images(pre)
-        saved = await self._download_images(urls)
+        saved = await self._save_generated_images(urls)
         content = self._image_markdown(saved)
         await self._finalize(res, content, spec)
         return content
@@ -175,6 +176,27 @@ class ChatService:
         pre = await self._navigate_and_send(res, spec)
         summary = await self.driver.wait_completion(pre)
         return await self._build_ppt_content(summary, spec, res)
+
+    async def _save_generated_images(self, urls: list[str]) -> list[SavedImage]:
+        if not urls:
+            raise UpstreamError("the page did not produce any generated images")
+        targets = [new_artifact_path(".png") for _ in urls]
+        ui_paths: list[Path | None] = []
+        try:
+            ui_paths = await self.driver.download_images(targets)
+        except Exception as exc:
+            logger.warning("page UI image download failed; falling back to URLs: %s", exc)
+        saved: list[SavedImage | None] = [None] * len(urls)
+        for i, path in enumerate(ui_paths[: len(urls)]):
+            if path is not None and path.is_file() and path.stat().st_size > 0:
+                saved[i] = SavedImage(name=path.name, path=path)
+        missing = [i for i, item in enumerate(saved) if item is None]
+        if missing:
+            logger.warning("direct-download fallback for %d generated image(s)", len(missing))
+            fallback = await self._download_images([urls[i] for i in missing])
+            for i, item in zip(missing, fallback, strict=True):
+                saved[i] = item
+        return [item for item in saved if item is not None]
 
     async def _download_images(self, urls: list[str]) -> list[SavedImage]:
         if not urls:

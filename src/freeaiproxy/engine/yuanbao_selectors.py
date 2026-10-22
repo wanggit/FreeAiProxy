@@ -58,6 +58,10 @@ LOGGED_IN_SELECTORS = (INPUT_BOX,)
 
 RATE_LIMIT_HINTS = ("频率过高", "操作频繁", "稍后再试")
 
+# Hovering a generated image reveals this control in the card's bottom-right
+# corner; clicking it downloads the watermark-free original.
+IMAGE_DOWNLOAD_BUTTON = ".dic-card-item__download"
+
 PLACEHOLDER_WRITING = "Enter your topic"
 PLACEHOLDER_IMAGE = "Describe the image"
 PLACEHOLDER_SEARCH = "real-time web insights"

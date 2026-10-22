@@ -276,6 +276,7 @@ class BrowserManager:
             "user_data_dir": str(profile_dir),
             "humanize": True,
             "os": _host_os(),
+            "locale": "en-US",
             "headless": mode,
         }
         if self.settings.debug.slowmo_ms > 0:
@@ -322,6 +323,7 @@ class BrowserManager:
                 user_data_dir=str(profile_dir),
                 humanize=True,
                 os=_host_os(),
+                locale="en-US",
                 headless=headless,
             )
             return await self._cm.__aenter__()

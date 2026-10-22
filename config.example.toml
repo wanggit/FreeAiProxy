@@ -1,0 +1,36 @@
+[server]
+host = "127.0.0.1"
+port = 8000
+api_key = ""
+
+[debug]
+# true 强制有头；false 强制无头；删除此行则由 worker.headless 决定
+headed = true
+slowmo_ms = 0
+trace = false
+
+[worker]
+# 仅在 debug.headed 未设置时生效
+headless = false
+poll_interval_ms = 500
+timeout_first_token_s = 120
+timeout_completion_s = 600
+max_queue_len = 20
+
+[profile]
+path = "data/profile"
+
+[providers.deepseek]
+enabled = true
+profile = "data/profile"
+
+[providers.yuanbao]
+enabled = true
+profile = "data/profiles/yuanbao"
+
+[attach]
+enabled = true
+max_size_mb = 20
+max_files = 5
+download_remote_urls = true
+remote_timeout_s = 30

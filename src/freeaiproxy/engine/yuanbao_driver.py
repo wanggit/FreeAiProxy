@@ -601,6 +601,28 @@ class YuanbaoDriver:
         await self._click_aria("AI Image")
         await self._wait_placeholder(S.PLACEHOLDER_IMAGE, 15)
 
+    async def select_image_ratio(self, ratio: str | None) -> None:
+        """Set the AI Image aspect ratio; None/auto selects the web default."""
+        target = S.IMAGE_RATIO_SMART if not ratio or ratio in ("auto", "smart") else ratio
+        button = self.page.locator(S.IMAGE_RATIO_BUTTON).first
+        if not await button.is_visible():
+            raise UpstreamPageChangedError("Yuanbao image ratio control is not available")
+        if target in (await button.inner_text()).strip():
+            return
+        await button.click()
+        await asyncio.sleep(0.5)
+        item = self.page.get_by_role("menuitemcheckbox", name=target, exact=True).first
+        if await item.count() == 0:
+            await self.page.keyboard.press("Escape")
+            raise UpstreamPageChangedError(f"Yuanbao image ratio '{target}' is not available")
+        try:
+            await item.click(timeout=8000)
+        except Exception:
+            await item.evaluate("el => el.click()")
+        await asyncio.sleep(0.5)
+        if target not in (await button.inner_text()).strip():
+            raise UpstreamPageChangedError(f"Yuanbao did not switch the image ratio to '{target}'")
+
     async def _enter_ppt(self) -> None:
         if await self._placeholder_contains(S.PLACEHOLDER_PPT):
             return

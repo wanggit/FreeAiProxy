@@ -108,7 +108,7 @@ class ChatService:
             self.queue.release()
 
     async def generate_images(
-        self, prompt: str, spec: ModelSpec, limit: int = 4
+        self, prompt: str, spec: ModelSpec, limit: int = 4, ratio: str | None = None
     ) -> list[SavedImage]:
         if spec.kind != "image":
             raise UpstreamError(f"model '{spec.id}' does not generate images")
@@ -119,6 +119,7 @@ class ChatService:
             await self.bm.ensure_available()
             await self.driver.goto_new_chat()
             await self.driver.prepare(spec)
+            await self.driver.select_image_ratio(ratio)
             pre = await self.driver.snapshot()
             await self.driver.send_user_message(prompt, attachments=[], spec=spec)
             urls = await self.driver.wait_images(pre)
@@ -279,14 +280,14 @@ class ChatService:
         pre = await self._navigate_and_send(res, spec)
         try:
             urls = await self.driver.wait_images(pre)
-            saved = await self._download_images(urls)
+            saved = await self._save_generated_images(urls)
             content = self._image_markdown(saved)
             await self._finalize(res, content, spec)
             yield content
         except (asyncio.CancelledError, GeneratorExit):
             with suppress(Exception):
                 urls = await self.driver.wait_images(pre)
-                saved = await self._download_images(urls)
+                saved = await self._save_generated_images(urls)
                 await self._finalize(res, self._image_markdown(saved), spec)
             raise
 

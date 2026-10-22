@@ -382,6 +382,7 @@ Content-Type: application/json
   "model": "yuanbao-image",
   "prompt": "一只戴红围巾的猫，水彩风格，简洁背景",
   "n": 1,
+  "size": "1:1",
   "response_format": "url"
 }
 ```
@@ -392,7 +393,7 @@ Content-Type: application/json
 | `prompt` | string | 必填 | 非空 |
 | `n` | integer | 4 | 1–4；元宝实际一次生成 4 张，按 n 截取 |
 | `response_format` | string | `url` | `url` 或 `b64_json` |
-| `size` | string | null | 接受但忽略 |
+| `size` | string | null | 宽高比：`1:1` / `4:3` / `3:4` / `16:9` / `9:16`；`auto` 或不传为 Smart Ratio |
 | `quality` | string | null | 接受但忽略 |
 | `style` | string | null | 接受但忽略 |
 

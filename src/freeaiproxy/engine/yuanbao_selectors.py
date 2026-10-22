@@ -62,6 +62,13 @@ RATE_LIMIT_HINTS = ("频率过高", "操作频繁", "稍后再试")
 # corner; clicking it downloads the watermark-free original.
 IMAGE_DOWNLOAD_BUTTON = ".dic-card-item__download"
 
+# AI Image exposes a "Ratio" dropdown (role=menuitemcheckbox items) that sets
+# the aspect ratio of the next generation. "Smart Ratio" is the web default.
+IMAGE_RATIO_BUTTON = "button[aria-label='Ratio']"
+IMAGE_RATIO_ITEM = '[role="menuitemcheckbox"]'
+IMAGE_RATIOS = ("1:1", "4:3", "3:4", "16:9", "9:16")
+IMAGE_RATIO_SMART = "Smart Ratio"
+
 PLACEHOLDER_WRITING = "Enter your topic"
 PLACEHOLDER_IMAGE = "Describe the image"
 PLACEHOLDER_SEARCH = "real-time web insights"

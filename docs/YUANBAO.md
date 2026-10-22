@@ -110,6 +110,9 @@ Tencent Docs，没有 Search。因此 `yuanbao-hunyuan` 不带显式搜索；强
 ## 9. AI 生图
 
 - 元宝一次生成 4 张图，约 15–25 秒。
+- 宽高比：AI Image 工具条上的 `button[aria-label='Ratio']` 下拉，选项为
+  `role="menuitemcheckbox"`，文本 `1:1 / 4:3 / 3:4 / 16:9 / 9:16 / Smart Ratio`
+  （默认 Smart Ratio）。`/v1/images/generations` 的 `size` 字段映射到该选择。
 - 生成的 `<img>` 来自 `hunyuan-prod.../text2img/...`，`src` 是带签名的缩略图 URL。
 - 无水印下载：悬停图片后右下角出现 `.dic-card-item__download`，点击并捕获
   Playwright download，保存到 `data/generated/`，返回 `/v1/files/<name>`。

@@ -6,11 +6,29 @@ import time
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 
+from freeaiproxy.engine import yuanbao_selectors as YB
 from freeaiproxy.engine.errors import InvalidRequestError, QueueFullError
 from freeaiproxy.services.chat_service import ChatService
 from freeaiproxy.services.models import get_model_spec
 
 router = APIRouter()
+
+_AUTO_RATIOS = ("", "auto", "smart", "default")
+
+
+def _normalize_ratio(size: str | None) -> str | None:
+    if size is None:
+        return None
+    value = size.strip()
+    if value.lower() in _AUTO_RATIOS:
+        return None
+    for ratio in YB.IMAGE_RATIOS:
+        if value.lower() == ratio.lower():
+            return ratio
+    raise InvalidRequestError(
+        "size must be one of the supported aspect ratios "
+        f"({', '.join(YB.IMAGE_RATIOS)}) or 'auto'"
+    )
 
 
 class _ImageRequest(BaseModel):
@@ -35,6 +53,7 @@ async def create_image(req: _ImageRequest, request: Request):
     spec = get_model_spec(req.model)
     if spec.kind != "image":
         raise InvalidRequestError(f"model '{spec.id}' does not generate images")
+    ratio = _normalize_ratio(req.size)
     svc: ChatService | None = request.app.state.services.get(spec.provider)
     if svc is None:
         raise InvalidRequestError(f"provider '{spec.provider}' is disabled")
@@ -44,7 +63,7 @@ async def create_image(req: _ImageRequest, request: Request):
             f"/{svc.settings.worker.max_queue_len})"
         )
 
-    images = await svc.generate_images(req.prompt, spec, limit=req.n)
+    images = await svc.generate_images(req.prompt, spec, limit=req.n, ratio=ratio)
     base = str(request.base_url).rstrip("/")
     data = []
     for image in images:

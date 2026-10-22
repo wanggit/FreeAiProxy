@@ -125,10 +125,11 @@ DeepSeek 与元宝均支持图片/文档附件；元宝图片附件可直接被 
 ```bash
 curl http://127.0.0.1:8000/v1/images/generations \
   -H "Content-Type: application/json" \
-  -d '{"model":"yuanbao-image","prompt":"一只戴红围巾的猫，水彩风格","n":1}'
+  -d '{"model":"yuanbao-image","prompt":"一只戴红围巾的猫，水彩风格","n":1,"size":"1:1"}'
 ```
 
 - 元宝每次网页生成 4 张图；`n` 取 1–4，默认 4。
+- `size` 指定宽高比：`1:1` / `4:3` / `3:4` / `16:9` / `9:16`；不传或 `auto` 为 Smart Ratio。
 - 网关会悬停图片并点击右下角下载图标，获取无水印原图（需在元宝设置中开启
   “无水印保存”），保存到 `data/generated/`，响应返回本地 URL：
   `http://127.0.0.1:8000/v1/files/<name>`。

@@ -2,7 +2,7 @@
 
 This file provides guidance to the AI agent when working with code in this repository.
 
-FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) behind an OpenAI-compatible API. Yuanbao calibration details are in `docs/YUANBAO.md`; DeepSeek specifics are in `docs/DESIGN.md`.
+FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web UIs (Camoufox/Playwright) behind an OpenAI-compatible API. Per-provider calibration details are in `docs/YUANBAO.md`, `docs/WENXIN.md` and `docs/CHATGLM.md`; DeepSeek specifics are in `docs/DESIGN.md`.
 
 ## Setup and checks
 
@@ -11,6 +11,7 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - Scripts under `scripts/` and `poc/` that drive the browser require a running gateway or a real logged-in browser; they are manual checks, not CI tests.
 - Use `uv run python scripts/manage.py start|stop|restart|status|build` for background lifecycle. It writes `data/freeaiproxy.pid` and `data/freeaiproxy.log`; `stop` only kills the managed process tree, not an unmanaged server.
 - Start with `uv run freeaiproxy start`; browser visibility follows `debug.headed` / `worker.headless`. Login profiles persist.
+- uvicorn only binds the port after the lifespan startup yields, so the lifespan must NOT wait on browser launches: provider browsers warm in a background task and `/healthz` reports `state=starting` until ready. `bm.start()` is idempotent (returns if the browser is already running) so a request-triggered recovery and the boot task never launch the same profile twice.
 
 ## Provider model
 
@@ -60,7 +61,7 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 
 ## Local state and gotchas
 
-- `data/` is entirely gitignored. `data/profile` and `data/profiles/*` (yuanbao, wenxin, chatglm) **are** the login states: never delete, reset, or commit them. `data/generated/` holds downloaded images and PPTX files.
+- `data/` is entirely gitignored. `data/profile` and `data/profiles/*` (yuanbao, wenxin, chatglm) **are** the login states: never delete, reset, or commit them. `data/generated/` holds downloaded images, PPTX and audio (`.flac`) files.
 - Config layering: `FREEAIPROXY__SECTION__KEY` env vars > `config.toml` > defaults.
 - Windows Git Bash passes non-ASCII `curl -d` arguments in the system code page (GBK). `api/middleware.py` transcodes non-UTF-8 JSON bodies via GB18030; keep it when touching request parsing.
 - Profile import/sync only supports Firefox and requires Firefox to be closed (locked cookie DB); Chromium is unsupported by design.

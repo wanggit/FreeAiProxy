@@ -14,11 +14,11 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 
 ## Provider model
 
-- Providers: `deepseek` (profile `data/profile`) and `yuanbao` (profile `data/profiles/yuanbao`), configured under `[providers.*]`. Both may run at once.
+- Providers: `deepseek` (profile `data/profile`), `yuanbao` (profile `data/profiles/yuanbao`) and `wenxin` (profile `data/profiles/wenxin`), configured under `[providers.*]`. Any subset may run at once.
 - Each provider has its own BrowserManager, driver, FIFO RequestQueue and profile. Serialize all page work per provider through its queue; never access one provider's page concurrently. Cross-provider requests may run in parallel.
 - Browser-bound requests call `bm.ensure_available()` inside the provider queue. It relaunches a closed, crashed or unresponsive browser from the persisted profile; keep the check inside the queue so recovery stays serialized.
 - Conversations are scoped by provider. Auto-match also scopes by mode; an explicit session may switch modes but not providers.
-- Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`.
+- Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`. Wenxin adds `wenxin-image`, `wenxin-writing` (both live) and `wenxin-ppt` (fails fast until its export is calibrated).
 - Expert mode has no Search entry in its Add menu. Search is intentionally exposed on Hy3 + Instant; do not try to force it into Expert.
 
 ## Yuanbao invariants
@@ -30,10 +30,19 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - Completion: stop button (`aria-label="Stop Answering"`) gone, `Send` visible, non-empty answer stable. A short answer can appear after the stop button disappears, so never finalize on button state alone. `.hyc-content-md-done` is only a hint.
 - Image generation: find `img` elements containing `text2img`/`hunyuan-prod` in the last AI item, hover each one and click `.dic-card-item__download` in its bottom-right corner, then capture the Playwright download to get the watermark-free original. Save to `data/generated/` and serve via `/v1/files/<name>`; the signed COS URL is only a fallback and must not be exposed.
 - Image aspect ratio: the `/v1/images/generations` `size` field maps to the AI Image `Ratio` dropdown (`button[aria-label='Ratio']` → `role="menuitemcheckbox"` items `1:1/4:3/3:4/16:9/9:16`, default `Smart Ratio`); select it after entering image mode and before sending.
-- The UI is language-sensitive: keep `locale="en-US"` on Camoufox so headed and headless runs both render the English labels the selectors target.
+- The UI is language-sensitive: the browser locale comes from `LoginSpec.locale` (DeepSeek/Yuanbao `en-US`, Wenxin `zh-CN`) so the site renders the labels each driver's selectors target. Set it per provider, not globally.
 - PPT: wait for the `.pptx` file card, click it to open the workspace, hover the Download icon (`.toolbar-export-format_download...`), choose `PPTX`, and capture the Playwright download. Do not return the web file-card link as the artifact.
 - Attachments: use Add -> Upload Image / Local Files with a trusted file-chooser click; wait for image `alt` or the composer's `with-files` state. Keep original filenames.
 - All API errors must subclass `GatewayError` (`engine/errors.py`).
+
+## Wenxin invariants
+
+- Selectors/constants live in `engine/wenxin_selectors.py`; page JS and interactions in `engine/wenxin_driver.py`. Browser locale is `zh-CN`.
+- Conversation URLs are `/search/<numeric-id>`; `conversations.chat_id` stores the numeric id. Login is Baidu passport (a modal over the home page); `LOGGED_IN_SELECTORS` must accept both composers because the home can be left in an agent mode.
+- The home (对话) composer is `textarea.ci-textarea`, but every agent mode (图片生成/帮我写作/PPT生成) replaces it with a contenteditable `div.ci-editor`; send via `.ci-submit-button`. Enter also submits but is less reliable, so click the button.
+- The answer is the last `[class*="conversation-flow-answer-container"]`; its text is `.cosd-markdown` (follow-up suggestion chips live outside it). Completion = a new answer container appeared, `.cosd-markdown-loading` is gone and the text is stable.
+- Image: generated `<img>` srcs are on `gips*.baidu.com/it/u=...`; the src carries a `wm=`/`wmo=` watermark. Stripping those params (`_watermark_free`) yields the clean original — download that, do not expose the watermarked URL. Wenxin's composer has no aspect-ratio control, so `select_image_ratio` is a no-op.
+- `wenxin-ppt` is not wired: Baidu PPT is a multi-step clarification wizard (asks to confirm direction, has a `跳过全部`/`clarify-skip` control) with an unconfirmed export; `prepare` fails fast until it is calibrated.
 
 ## DeepSeek invariants
 

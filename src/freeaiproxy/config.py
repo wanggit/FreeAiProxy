@@ -45,6 +45,11 @@ class ProvidersConfig(BaseModel):
             enabled=False, profile="data/profiles/yuanbao"
         )
     )
+    wenxin: ProviderConfig = Field(
+        default_factory=lambda: ProviderConfig(
+            enabled=False, profile="data/profiles/wenxin"
+        )
+    )
 
 
 class AttachConfig(BaseModel):
@@ -154,7 +159,7 @@ def provider_profile_path(settings: Settings, name: str) -> Path:
 
 def enabled_provider_names(settings: Settings) -> list[str]:
     names: list[str] = []
-    for name in ("deepseek", "yuanbao"):
+    for name in ("deepseek", "yuanbao", "wenxin"):
         provider = getattr(settings.providers, name, None)
         if provider is not None and provider.enabled:
             names.append(name)

@@ -30,6 +30,10 @@ class LoginSpec:
     login_hints: tuple[str, ...] = ()
     login_surfaces: tuple[str, ...] = ()
     logged_in_selectors: tuple[str, ...] = ()
+    # Browser locale drives the site UI language the selectors target. English
+    # sites (DeepSeek/Yuanbao) are calibrated against en-US; a Chinese-only site
+    # like Wenxin needs zh-CN. Defaults to en-US when unset.
+    locale: str = "en-US"
 
 
 def _host_os() -> str:
@@ -276,7 +280,7 @@ class BrowserManager:
             "user_data_dir": str(profile_dir),
             "humanize": True,
             "os": _host_os(),
-            "locale": "en-US",
+            "locale": self.login.locale,
             "headless": mode,
         }
         if self.settings.debug.slowmo_ms > 0:
@@ -323,7 +327,7 @@ class BrowserManager:
                 user_data_dir=str(profile_dir),
                 humanize=True,
                 os=_host_os(),
-                locale="en-US",
+                locale=self.login.locale,
                 headless=headless,
             )
             return await self._cm.__aenter__()

@@ -28,6 +28,12 @@ profile = "data/profile"
 enabled = true
 profile = "data/profiles/yuanbao"
 
+# 文心（wenxin.baidu.com）：图片生成 / 帮我写作 / PPT生成。
+# 首次启用需在有头浏览器里登录一次（freeaiproxy relogin --provider wenxin）。
+[providers.wenxin]
+enabled = false
+profile = "data/profiles/wenxin"
+
 [attach]
 enabled = true
 max_size_mb = 20

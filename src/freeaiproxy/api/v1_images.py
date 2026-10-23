@@ -16,19 +16,23 @@ router = APIRouter()
 _AUTO_RATIOS = ("", "auto", "smart", "default")
 
 
-def _normalize_ratio(size: str | None) -> str | None:
+def _normalize_ratio(size: str | None, provider: str) -> str | None:
     if size is None:
         return None
     value = size.strip()
     if value.lower() in _AUTO_RATIOS:
         return None
-    for ratio in YB.IMAGE_RATIOS:
-        if value.lower() == ratio.lower():
-            return ratio
-    raise InvalidRequestError(
-        "size must be one of the supported aspect ratios "
-        f"({', '.join(YB.IMAGE_RATIOS)}) or 'auto'"
-    )
+    if provider == "yuanbao":
+        for ratio in YB.IMAGE_RATIOS:
+            if value.lower() == ratio.lower():
+                return ratio
+        raise InvalidRequestError(
+            "size must be one of the supported aspect ratios "
+            f"({', '.join(YB.IMAGE_RATIOS)}) or 'auto'"
+        )
+    # Other providers (e.g. wenxin) have their own ratio vocabulary that is
+    # resolved by the driver during calibration; pass the value through.
+    return value
 
 
 class _ImageRequest(BaseModel):
@@ -53,7 +57,7 @@ async def create_image(req: _ImageRequest, request: Request):
     spec = get_model_spec(req.model)
     if spec.kind != "image":
         raise InvalidRequestError(f"model '{spec.id}' does not generate images")
-    ratio = _normalize_ratio(req.size)
+    ratio = _normalize_ratio(req.size, spec.provider)
     svc: ChatService | None = request.app.state.services.get(spec.provider)
     if svc is None:
         raise InvalidRequestError(f"provider '{spec.provider}' is disabled")

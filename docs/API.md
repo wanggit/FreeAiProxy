@@ -126,6 +126,9 @@ resp = client.chat.completions.create(
 | `yuanbao-writing` | 元宝 | Writing（专业写作） | chat |
 | `yuanbao-image` | 元宝 | AI Image | image（也支持 chat） |
 | `yuanbao-ppt` | 元宝 | Presentation Maker | chat + artifact |
+| `wenxin-image` | 文心 | 图片生成 | image（也支持 chat） |
+| `wenxin-writing` | 文心 | 帮我写作 | chat |
+| `wenxin-ppt` | 文心 | PPT 生成 | 暂未接入（返回明确错误） |
 
 ### 3.1 模型行为说明
 
@@ -372,8 +375,9 @@ POST /v1/images/generations
 Content-Type: application/json
 ```
 
-网关通过页面右下角的下载图标获取无水印原图（需在元宝设置中开启“无水印保存”），
-下载失败时才回退到图片直链。
+无水印取图按 provider 不同：元宝悬停图片点击右下角下载图标捕获 Playwright 下载
+（需在元宝设置开启“无水印保存”），失败回退直链；文心直接去掉图片 URL 的 `wm`/`wmo`
+水印参数下载原图。`size` 宽高比目前仅元宝支持（文心无比例控件，接受并忽略）。
 
 ### 5.2 请求体
 
@@ -393,7 +397,7 @@ Content-Type: application/json
 | `prompt` | string | 必填 | 非空 |
 | `n` | integer | 4 | 1–4；元宝实际一次生成 4 张，按 n 截取 |
 | `response_format` | string | `url` | `url` 或 `b64_json` |
-| `size` | string | null | 宽高比：`1:1` / `4:3` / `3:4` / `16:9` / `9:16`；`auto` 或不传为 Smart Ratio |
+| `size` | string | null | 宽高比（仅元宝支持）：`1:1` / `4:3` / `3:4` / `16:9` / `9:16`；`auto` 或不传为 Smart Ratio |
 | `quality` | string | null | 接受但忽略 |
 | `style` | string | null | 接受但忽略 |
 

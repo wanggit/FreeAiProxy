@@ -19,6 +19,9 @@ EXPECTED = {
     "yuanbao-writing",
     "yuanbao-image",
     "yuanbao-ppt",
+    "wenxin-image",
+    "wenxin-writing",
+    "wenxin-ppt",
 }
 
 
@@ -46,6 +49,15 @@ def test_image_and_artifact_models():
     assert get_model_spec("yuanbao-image").kind == "image"
     assert get_model_spec("yuanbao-writing").agent == "writing"
     assert get_model_spec("yuanbao-ppt").agent == "ppt"
+
+
+def test_wenxin_specs():
+    image = get_model_spec("wenxin-image")
+    assert image.provider == "wenxin"
+    assert image.kind == "image"
+    assert image.agent == "image"
+    assert get_model_spec("wenxin-writing").agent == "writing"
+    assert get_model_spec("wenxin-ppt").agent == "ppt"
 
 
 def test_validate_model_returns_id():

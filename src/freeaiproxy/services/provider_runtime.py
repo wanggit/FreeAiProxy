@@ -6,6 +6,7 @@ from typing import Any
 from freeaiproxy.config import Settings, provider_profile_path
 from freeaiproxy.db import Database
 from freeaiproxy.engine import selectors as DS
+from freeaiproxy.engine import wenxin_selectors as WX
 from freeaiproxy.engine import yuanbao_selectors as YB
 from freeaiproxy.engine.browser_manager import BrowserManager, LoginSpec
 from freeaiproxy.services.chat_service import ChatService
@@ -39,6 +40,16 @@ def login_spec(settings: Settings, name: str) -> LoginSpec:
             login_surfaces=YB.LOGIN_SURFACES,
             logged_in_selectors=YB.LOGGED_IN_SELECTORS,
         )
+    if name == "wenxin":
+        return LoginSpec(
+            name="wenxin",
+            startup_url=WX.BASE_URL,
+            profile_path=profile_path,
+            login_hints=WX.LOGIN_HINTS,
+            login_surfaces=WX.LOGIN_SURFACES,
+            logged_in_selectors=WX.LOGGED_IN_SELECTORS,
+            locale="zh-CN",
+        )
     raise ValueError(f"unknown provider '{name}'")
 
 
@@ -55,6 +66,10 @@ def make_driver(settings: Settings, name: str, bm: BrowserManager) -> Any:
         from freeaiproxy.engine.yuanbao_driver import YuanbaoDriver
 
         return YuanbaoDriver(bm, settings)
+    if name == "wenxin":
+        from freeaiproxy.engine.wenxin_driver import WenxinDriver
+
+        return WenxinDriver(bm, settings)
     raise ValueError(f"unknown provider '{name}'")
 
 

@@ -46,6 +46,30 @@ async def test_auto_match_does_not_cross_providers(tmp_path):
     assert res.conv["provider"] == "yuanbao"
 
 
+async def test_wenxin_session_is_scoped(tmp_path):
+    db = await make_db(tmp_path)
+    conv_id = gen_conv_id()
+    await db.create_conversation(conv_id, provider="wenxin", mode="image")
+    await db.append_history(conv_id, ROLE_USER, "画一只猫")
+    await db.append_history(conv_id, "assistant", "已生成")
+    with pytest.raises(SessionInvalidError):
+        await resolve(
+            db,
+            session_id=conv_id,
+            messages=[Msg(ROLE_USER, "画一只猫")],
+            provider="yuanbao",
+        )
+    res = await resolve(
+        db,
+        session_id=None,
+        messages=[Msg(ROLE_USER, "画一只猫")],
+        provider="wenxin",
+        mode="image",
+    )
+    assert res.conv_id == conv_id
+    assert res.conv["provider"] == "wenxin"
+
+
 async def test_yuanbao_mode_is_stored(tmp_path):
     db = await make_db(tmp_path)
     conv_id = gen_conv_id()

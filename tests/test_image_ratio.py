@@ -9,19 +9,24 @@ from freeaiproxy.engine.errors import InvalidRequestError
 
 @pytest.mark.parametrize("size", [None, "", "auto", "smart", "default", "AUTO"])
 def test_auto_sizes_map_to_none(size: str | None) -> None:
-    assert _normalize_ratio(size) is None
+    assert _normalize_ratio(size, "yuanbao") is None
 
 
 @pytest.mark.parametrize("ratio", YB.IMAGE_RATIOS)
 def test_supported_ratios_pass_through(ratio: str) -> None:
-    assert _normalize_ratio(ratio) == ratio
+    assert _normalize_ratio(ratio, "yuanbao") == ratio
 
 
 def test_ratio_is_case_and_space_tolerant() -> None:
-    assert _normalize_ratio(" 16:9 ") == "16:9"
+    assert _normalize_ratio(" 16:9 ", "yuanbao") == "16:9"
 
 
 @pytest.mark.parametrize("size", ["1024x1024", "21:9", "square"])
-def test_unsupported_size_rejected(size: str) -> None:
+def test_unsupported_size_rejected_for_yuanbao(size: str) -> None:
     with pytest.raises(InvalidRequestError):
-        _normalize_ratio(size)
+        _normalize_ratio(size, "yuanbao")
+
+
+@pytest.mark.parametrize("size", ["1:1", "21:9", "anything"])
+def test_other_providers_pass_ratio_through(size: str) -> None:
+    assert _normalize_ratio(size, "wenxin") == size

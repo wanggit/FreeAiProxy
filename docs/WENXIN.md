@@ -12,7 +12,6 @@
 |---|---|---|
 | `wenxin-image` | 图片生成 | 已接入（无水印） |
 | `wenxin-writing` | 帮我写作 | 已接入（提示词→文本） |
-| `wenxin-ppt` | PPT 生成 | 未接入（多步澄清向导 + 导出待校准，调用即明确报错） |
 
 ## 2. 登录与会话
 
@@ -36,9 +35,3 @@
 - 无水印：直接对 URL 去掉 `&wm=...`、`&wmo=...`（`_watermark_free`）后 httpx 下载，
   存 `data/generated/`，经 `/v1/files/<name>` 返回。实测无头/有头均无水印。
 - 文心 composer 无宽高比控件，`select_image_ratio` 为空操作；`size` 仅元宝生效。
-
-## 5. 待办：PPT
-
-文心 PPT 是 agentic 多步：发送主题后先弹“确认关键方向”的澄清向导（含
-`[class*="clarify-skip"]` 的“跳过全部”），随后生成大纲→成品→导出。导出是否会产出
-可 `expect_download` 的 `.pptx` 尚未确认，故 `wenxin-ppt` 暂在 `prepare` 阶段快速失败。

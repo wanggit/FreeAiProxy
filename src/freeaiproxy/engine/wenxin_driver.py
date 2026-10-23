@@ -116,10 +116,6 @@ IMAGES_JS = """
 _WM_PARAMS = re.compile(r"&w[mo]=[^&?]*")
 
 
-def _not_calibrated(what: str) -> UpstreamPageChangedError:
-    return UpstreamPageChangedError(f"wenxin {what} is not calibrated yet")
-
-
 class WenxinDriver:
     def __init__(self, bm: BrowserManager, settings: Settings):
         self.bm = bm
@@ -142,11 +138,6 @@ class WenxinDriver:
     async def prepare(self, spec: ModelSpec) -> None:
         if await self._login_visible():
             raise NotLoggedInError(f"{self.bm.login.name} shows the login panel")
-        if spec.agent == "ppt":
-            raise UpstreamPageChangedError(
-                "wenxin-ppt is not available yet: Baidu's PPT flow is a multi-step "
-                "clarification wizard whose export still needs calibration"
-            )
         label = {
             "image": S.MODE_IMAGE,
             "writing": S.MODE_WRITING,
@@ -313,9 +304,6 @@ class WenxinDriver:
     @staticmethod
     def _watermark_free(url: str) -> str:
         return _WM_PARAMS.sub("", url)
-
-    async def download_ppt(self, target: Path) -> str:
-        raise _not_calibrated("download_ppt")
 
     async def _wait_new_answer(self, pre: WenxinPreState, timeout_s: float) -> bool:
         deadline = time.monotonic() + timeout_s

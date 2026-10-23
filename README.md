@@ -58,7 +58,6 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 | `yuanbao-ppt` | 元宝 | Presentation Maker（PPT 生成） |
 | `wenxin-image` | 文心 | 图片生成（无水印，`/v1/images` 或 chat） |
 | `wenxin-writing` | 文心 | 帮我写作（提示词→文本） |
-| `wenxin-ppt` | 文心 | PPT 生成（暂未接入：网页为多步澄清向导，导出待校准） |
 
 说明：
 

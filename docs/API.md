@@ -128,7 +128,6 @@ resp = client.chat.completions.create(
 | `yuanbao-ppt` | 元宝 | Presentation Maker | chat + artifact |
 | `wenxin-image` | 文心 | 图片生成 | image（也支持 chat） |
 | `wenxin-writing` | 文心 | 帮我写作 | chat |
-| `wenxin-ppt` | 文心 | PPT 生成 | 暂未接入（返回明确错误） |
 
 ### 3.1 模型行为说明
 

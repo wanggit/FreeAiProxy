@@ -21,7 +21,6 @@ EXPECTED = {
     "yuanbao-ppt",
     "wenxin-image",
     "wenxin-writing",
-    "wenxin-ppt",
 }
 
 
@@ -57,7 +56,6 @@ def test_wenxin_specs():
     assert image.kind == "image"
     assert image.agent == "image"
     assert get_model_spec("wenxin-writing").agent == "writing"
-    assert get_model_spec("wenxin-ppt").agent == "ppt"
 
 
 def test_validate_model_returns_id():

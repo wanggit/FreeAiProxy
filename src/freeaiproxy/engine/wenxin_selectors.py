@@ -37,13 +37,6 @@ LOADING = ".cosd-markdown-loading"
 MODE_CAPSULE = ".capsule-text"
 MODE_IMAGE = "图片生成"
 MODE_WRITING = "帮我写作"
-MODE_PPT = "PPT生成"
-
-# TODO(calibrate): image result + watermark-free download control.
-IMAGE_DOWNLOAD_BUTTON = ""
-# TODO(calibrate): ppt file card + export/download control.
-PPT_DOWNLOAD_BUTTON = ""
-FILE_CARD = ""
 
 # Login detection. Verified 2026-10-23 against the Baidu passport modal that
 # overlays the home page when signed out.

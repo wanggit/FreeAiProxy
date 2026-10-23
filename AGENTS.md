@@ -14,11 +14,11 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 
 ## Provider model
 
-- Providers: `deepseek` (profile `data/profile`), `yuanbao` (profile `data/profiles/yuanbao`) and `wenxin` (profile `data/profiles/wenxin`), configured under `[providers.*]`. Any subset may run at once.
+- Providers: `deepseek` (profile `data/profile`), `yuanbao` (profile `data/profiles/yuanbao`), `wenxin` (profile `data/profiles/wenxin`) and `chatglm` (profile `data/profiles/chatglm`), configured under `[providers.*]`. Any subset may run at once.
 - Each provider has its own BrowserManager, driver, FIFO RequestQueue and profile. Serialize all page work per provider through its queue; never access one provider's page concurrently. Cross-provider requests may run in parallel.
 - Browser-bound requests call `bm.ensure_available()` inside the provider queue. It relaunches a closed, crashed or unresponsive browser from the persisted profile; keep the check inside the queue so recovery stays serialized.
 - Conversations are scoped by provider. Auto-match also scopes by mode; an explicit session may switch modes but not providers.
-- Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`. Wenxin adds `wenxin-image` and `wenxin-writing`.
+- Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`. Wenxin adds `wenxin-image` and `wenxin-writing`. ChatGLM (智谱清言) adds `chatglm-glm5.3` and `chatglm-image`.
 - Expert mode has no Search entry in its Add menu. Search is intentionally exposed on Hy3 + Instant; do not try to force it into Expert.
 
 ## Yuanbao invariants
@@ -30,7 +30,7 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - Completion: stop button (`aria-label="Stop Answering"`) gone, `Send` visible, non-empty answer stable. A short answer can appear after the stop button disappears, so never finalize on button state alone. `.hyc-content-md-done` is only a hint.
 - Image generation: find `img` elements containing `text2img`/`hunyuan-prod` in the last AI item, hover each one and click `.dic-card-item__download` in its bottom-right corner, then capture the Playwright download to get the watermark-free original. Save to `data/generated/` and serve via `/v1/files/<name>`; the signed COS URL is only a fallback and must not be exposed.
 - Image aspect ratio: the `/v1/images/generations` `size` field maps to the AI Image `Ratio` dropdown (`button[aria-label='Ratio']` → `role="menuitemcheckbox"` items `1:1/4:3/3:4/16:9/9:16`, default `Smart Ratio`); select it after entering image mode and before sending.
-- The UI is language-sensitive: the browser locale comes from `LoginSpec.locale` (DeepSeek/Yuanbao `en-US`, Wenxin `zh-CN`) so the site renders the labels each driver's selectors target. Set it per provider, not globally.
+- The UI is language-sensitive: the browser locale comes from `LoginSpec.locale` (DeepSeek/Yuanbao `en-US`, Wenxin/ChatGLM `zh-CN`) so the site renders the labels each driver's selectors target. Set it per provider, not globally.
 - PPT: wait for the `.pptx` file card, click it to open the workspace, hover the Download icon (`.toolbar-export-format_download...`), choose `PPTX`, and capture the Playwright download. Do not return the web file-card link as the artifact.
 - Attachments: use Add -> Upload Image / Local Files with a trusted file-chooser click; wait for image `alt` or the composer's `with-files` state. Keep original filenames.
 - All API errors must subclass `GatewayError` (`engine/errors.py`).
@@ -43,6 +43,14 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - The answer is the last `[class*="conversation-flow-answer-container"]`; its text is `.cosd-markdown` (follow-up suggestion chips live outside it). Completion = a new answer container appeared, `.cosd-markdown-loading` is gone and the text is stable.
 - Image: generated `<img>` srcs are on `gips*.baidu.com/it/u=...`; the src carries a `wm=`/`wmo=` watermark. Stripping those params (`_watermark_free`) yields the clean original — download that, do not expose the watermarked URL. Wenxin's composer has no aspect-ratio control, so `select_image_ratio` is a no-op.
 
+## ChatGLM (智谱清言) invariants
+
+- Selectors/constants live in `engine/chatglm_selectors.py`; page JS and interactions in `engine/chatglm_driver.py`. Browser locale is `zh-CN`. ChatGLM calibration details are in `docs/CHATGLM.md`.
+- The site swallows Playwright's native mouse clicks: type with `fill()` + Enter, and trigger popover controls via `evaluate(el.click())`.
+- Conversations are addressed by the `cid` query param (24-hex), not the path. `conversations.chat_id` stores the cid; draw conversations are prefixed `draw:` so `goto_chat` picks the gdetail agent page.
+- GLM-5.3 is selected via the `.think-mode-trigger` popover and always emits a thinking trace; the reply is `.answer-content-wrap` WITHOUT `text-advance-thinking-content`. Completion = `.enter` lost the `searching` class + text stable.
+- Image: on the AI画图 agent page force mode radio `GLM Image` and the 去水印 toggle on before sending (watermark removal is a generation-time switch; then the `sfile.chatglm.cn` url itself, query stripped, is the clean original). The mode chip's innerText is CSS-truncated ("GLM"), so verify via the popover's `.el-radio.is-checked` instead.
+
 ## DeepSeek invariants
 
 - The message list is virtualized: anchor the reply on the last user message; never infer it from node counts or text diffs against the previous answer.
@@ -51,7 +59,7 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 
 ## Local state and gotchas
 
-- `data/` is entirely gitignored. `data/profile` and `data/profiles/yuanbao` **are** the login states: never delete, reset, or commit them. `data/generated/` holds downloaded images and PPTX files.
+- `data/` is entirely gitignored. `data/profile` and `data/profiles/*` (yuanbao, wenxin, chatglm) **are** the login states: never delete, reset, or commit them. `data/generated/` holds downloaded images and PPTX files.
 - Config layering: `FREEAIPROXY__SECTION__KEY` env vars > `config.toml` > defaults.
 - Windows Git Bash passes non-ASCII `curl -d` arguments in the system code page (GBK). `api/middleware.py` transcodes non-UTF-8 JSON bodies via GB18030; keep it when touching request parsing.
 - Profile import/sync only supports Firefox and requires Firefox to be closed (locked cookie DB); Chromium is unsupported by design.

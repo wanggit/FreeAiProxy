@@ -98,6 +98,30 @@ async def test_auto_match_does_not_cross_modes(tmp_path):
     assert res.conv["mode"] == "expert"
 
 
+async def test_chatglm_session_is_scoped(tmp_path):
+    db = await make_db(tmp_path)
+    conv_id = gen_conv_id()
+    await db.create_conversation(conv_id, provider="chatglm", mode="chat")
+    await db.append_history(conv_id, ROLE_USER, "介绍下光合作用")
+    await db.append_history(conv_id, "assistant", "光合作用是……")
+    with pytest.raises(SessionInvalidError):
+        await resolve(
+            db,
+            session_id=conv_id,
+            messages=[Msg(ROLE_USER, "介绍下光合作用")],
+            provider="wenxin",
+        )
+    res = await resolve(
+        db,
+        session_id=None,
+        messages=[Msg(ROLE_USER, "介绍下光合作用")],
+        provider="chatglm",
+        mode="chat",
+    )
+    assert res.conv_id == conv_id
+    assert res.conv["provider"] == "chatglm"
+
+
 async def test_old_database_is_migrated(tmp_path):
     path = tmp_path / "old.sqlite"
     with sqlite3.connect(path) as conn:

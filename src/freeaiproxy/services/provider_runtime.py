@@ -5,6 +5,7 @@ from typing import Any
 
 from freeaiproxy.config import Settings, provider_profile_path
 from freeaiproxy.db import Database
+from freeaiproxy.engine import chatglm_selectors as CG
 from freeaiproxy.engine import selectors as DS
 from freeaiproxy.engine import wenxin_selectors as WX
 from freeaiproxy.engine import yuanbao_selectors as YB
@@ -50,6 +51,16 @@ def login_spec(settings: Settings, name: str) -> LoginSpec:
             logged_in_selectors=WX.LOGGED_IN_SELECTORS,
             locale="zh-CN",
         )
+    if name == "chatglm":
+        return LoginSpec(
+            name="chatglm",
+            startup_url=CG.CHAT_URL,
+            profile_path=profile_path,
+            login_hints=CG.LOGIN_HINTS,
+            login_surfaces=CG.LOGIN_SURFACES,
+            logged_in_selectors=CG.LOGGED_IN_SELECTORS,
+            locale="zh-CN",
+        )
     raise ValueError(f"unknown provider '{name}'")
 
 
@@ -70,6 +81,10 @@ def make_driver(settings: Settings, name: str, bm: BrowserManager) -> Any:
         from freeaiproxy.engine.wenxin_driver import WenxinDriver
 
         return WenxinDriver(bm, settings)
+    if name == "chatglm":
+        from freeaiproxy.engine.chatglm_driver import ChatGLMDriver
+
+        return ChatGLMDriver(bm, settings)
     raise ValueError(f"unknown provider '{name}'")
 
 

@@ -128,6 +128,8 @@ resp = client.chat.completions.create(
 | `yuanbao-ppt` | 元宝 | Presentation Maker | chat + artifact |
 | `wenxin-image` | 文心 | 图片生成 | image（也支持 chat） |
 | `wenxin-writing` | 文心 | 帮我写作 | chat |
+| `chatglm-glm5.3` | 智谱清言 | GLM-5.3 深度思考 | chat |
+| `chatglm-image` | 智谱清言 | AI画图（GLM Image） | image（也支持 chat） |
 
 ### 3.1 模型行为说明
 
@@ -376,7 +378,8 @@ Content-Type: application/json
 
 无水印取图按 provider 不同：元宝悬停图片点击右下角下载图标捕获 Playwright 下载
 （需在元宝设置开启“无水印保存”），失败回退直链；文心直接去掉图片 URL 的 `wm`/`wmo`
-水印参数下载原图。`size` 宽高比目前仅元宝支持（文心无比例控件，接受并忽略）。
+水印参数下载原图；智谱清言在生成前打开“去水印”开关，CDN 直链本身即无水印。
+`size` 宽高比目前仅元宝支持（文心无比例控件，清言比例弹层未校准，均接受并忽略）。
 
 ### 5.2 请求体
 

@@ -64,6 +64,8 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("yuanbao-ppt", "yuanbao", mode="ppt", agent="ppt"),
     ModelSpec("wenxin-image", "wenxin", kind="image", mode="image", agent="image"),
     ModelSpec("wenxin-writing", "wenxin", mode="writing", agent="writing"),
+    ModelSpec("chatglm-glm5.3", "chatglm", mode="chat"),
+    ModelSpec("chatglm-image", "chatglm", kind="image", mode="image", agent="image"),
 )
 
 MODELS: dict[str, ModelSpec] = {spec.id: spec for spec in MODEL_SPECS}

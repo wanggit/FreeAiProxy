@@ -21,6 +21,8 @@ EXPECTED = {
     "yuanbao-ppt",
     "wenxin-image",
     "wenxin-writing",
+    "chatglm-glm5.3",
+    "chatglm-image",
 }
 
 
@@ -56,6 +58,17 @@ def test_wenxin_specs():
     assert image.kind == "image"
     assert image.agent == "image"
     assert get_model_spec("wenxin-writing").agent == "writing"
+
+
+def test_chatglm_specs():
+    chat = get_model_spec("chatglm-glm5.3")
+    assert chat.provider == "chatglm"
+    assert chat.kind == "chat"
+    assert chat.agent is None
+    image = get_model_spec("chatglm-image")
+    assert image.provider == "chatglm"
+    assert image.kind == "image"
+    assert image.agent == "image"
 
 
 def test_validate_model_returns_id():

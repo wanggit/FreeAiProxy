@@ -34,6 +34,12 @@ profile = "data/profiles/yuanbao"
 enabled = false
 profile = "data/profiles/wenxin"
 
+# 智谱清言（chatglm.cn）：GLM-5.3 深度思考 / AI画图（GLM Image，去水印）。
+# 需要先在有头浏览器里登录一次，登录态保存在 profile 目录。
+[providers.chatglm]
+enabled = false
+profile = "data/profiles/chatglm"
+
 [attach]
 enabled = true
 max_size_mb = 20

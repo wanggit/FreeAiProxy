@@ -50,6 +50,11 @@ class ProvidersConfig(BaseModel):
             enabled=False, profile="data/profiles/wenxin"
         )
     )
+    chatglm: ProviderConfig = Field(
+        default_factory=lambda: ProviderConfig(
+            enabled=False, profile="data/profiles/chatglm"
+        )
+    )
 
 
 class AttachConfig(BaseModel):
@@ -159,7 +164,7 @@ def provider_profile_path(settings: Settings, name: str) -> Path:
 
 def enabled_provider_names(settings: Settings) -> list[str]:
     names: list[str] = []
-    for name in ("deepseek", "yuanbao", "wenxin"):
+    for name in ("deepseek", "yuanbao", "wenxin", "chatglm"):
         provider = getattr(settings.providers, name, None)
         if provider is not None and provider.enabled:
             names.append(name)

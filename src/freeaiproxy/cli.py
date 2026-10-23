@@ -44,7 +44,7 @@ def _resolve_providers(settings: Settings, provider: str) -> list[str]:
     enabled = enabled_provider_names(settings)
     if provider == "all":
         return enabled
-    if provider not in ("deepseek", "yuanbao", "wenxin"):
+    if provider not in ("deepseek", "yuanbao", "wenxin", "chatglm"):
         raise typer.BadParameter(f"unknown provider '{provider}'")
     if provider not in enabled:
         raise typer.BadParameter(f"provider '{provider}' is not enabled")

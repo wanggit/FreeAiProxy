@@ -11,6 +11,9 @@ Run through the project environment:
 
 The server is started as a detached child process. Its PID is stored in
 ``data/freeaiproxy.pid`` and its output is appended to ``data/freeaiproxy.log``.
+``start`` and ``restart`` block until every enabled provider reports logged-in
+and ready (or ``--wait`` expires with a non-zero exit code), so the script only
+returns once the gateway is actually usable.
 Only processes started by this script are stopped; an unmanaged server that is
 already listening on the configured port is reported and left alone.
 """
@@ -118,18 +121,31 @@ def print_health(data: dict) -> None:
         )
 
 
-def wait_for_health(
+def all_providers_ready(data: dict | None) -> bool:
+    if not data:
+        return False
+    providers = data.get("providers") or {}
+    if not providers:
+        return False
+    return all(
+        p.get("logged_in") and p.get("state") == "ready" for p in providers.values()
+    )
+
+
+def wait_until_ready(
     host: str, port: int, process: psutil.Process, timeout: float
 ) -> dict | None:
+    """Block until every provider reports logged_in + ready, or timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         data = fetch_health(host, port)
-        if data is not None:
+        if all_providers_ready(data):
             return data
         if not process.is_running():
             return None
         time.sleep(1.0)
-    return fetch_health(host, port)
+    data = fetch_health(host, port)
+    return data if all_providers_ready(data) else None
 
 
 def start(args: argparse.Namespace) -> int:
@@ -212,19 +228,28 @@ def start(args: argparse.Namespace) -> int:
     print(f"started (pid {child.pid})")
     print(f"url: http://{check_host}:{port}")
     print(f"logs: {LOG_FILE}")
-    print(f"waiting up to {args.wait:g}s for /healthz...")
-    data = wait_for_health(check_host, port, proc, args.wait)
+    print(f"waiting up to {args.wait:g}s for all providers to become ready...")
+    try:
+        data = wait_until_ready(check_host, port, proc, args.wait)
+    except KeyboardInterrupt:
+        print("interrupted; the server keeps starting in the background")
+        print("check again with: uv run python scripts/manage.py status")
+        return 130
     if data is not None:
         print_health(data)
+        print("all providers ready")
         return 0
     if not proc.is_running():
         print("server exited during startup")
         remove_pid_file()
         print(f"logs: {LOG_FILE}")
         return 1
-    print("server is still starting (login may be required in the browser window)")
+    data = fetch_health(check_host, port)
+    if data:
+        print_health(data)
+    print("not all providers are ready yet (login may be required in the browser window)")
     print("check again with: uv run python scripts/manage.py status")
-    return 0
+    return 1
 
 
 def stop(args: argparse.Namespace) -> int:
@@ -344,7 +369,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_start = sub.add_parser("start", parents=[common], help="start the server")
     p_start.add_argument(
-        "--wait", type=float, default=30.0, help="seconds to wait for /healthz"
+        "--wait",
+        type=float,
+        default=180.0,
+        help="seconds to wait for all providers to become ready",
     )
     p_start.set_defaults(func=start)
 
@@ -359,7 +387,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout", type=float, default=10.0, help="graceful stop timeout in seconds"
     )
     p_restart.add_argument(
-        "--wait", type=float, default=30.0, help="seconds to wait for /healthz"
+        "--wait",
+        type=float,
+        default=180.0,
+        help="seconds to wait for all providers to become ready",
     )
     p_restart.set_defaults(func=restart)
 

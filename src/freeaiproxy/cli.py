@@ -51,9 +51,42 @@ def _resolve_providers(settings: Settings, provider: str) -> list[str]:
     return [provider]
 
 
+_instance_lock_handle = None
+
+
+def _acquire_instance_lock() -> bool:
+    """Hold an exclusive lock on data/freeaiproxy.lock for the process lifetime.
+
+    Browsers now warm up before uvicorn binds the port, so a port check alone
+    cannot stop a second instance from starting and fighting the first one for
+    the same profiles.
+    """
+    global _instance_lock_handle
+    lock_path = Path("data") / "freeaiproxy.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
+    except OSError:
+        handle.close()
+        return False
+    _instance_lock_handle = handle
+    return True
+
+
 @app.command()
 def start(config: Path | None = typer.Option(None, "--config", help="配置文件路径")):
     """启动网关服务（无登录态时会弹出浏览器引导登录）。"""
+    if not _acquire_instance_lock():
+        console.print("[red]另一个 FreeAiProxy 实例已在运行（data/freeaiproxy.lock 被占用），退出。[/]")
+        raise typer.Exit(1)
     settings = _settings(config)
     console.print(f"[green]FreeAiProxy[/] 启动于 http://{settings.server.host}:{settings.server.port}")
     if browser_headless(settings):

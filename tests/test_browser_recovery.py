@@ -100,7 +100,7 @@ async def test_ensure_available_promotes_a_logged_in_session(monkeypatch) -> Non
     bm.state = "login_required"
     bm.logged_in = False
 
-    async def logged_in() -> bool:
+    async def logged_in(timeout_s: float = 0.0) -> bool:
         return True
 
     monkeypatch.setattr(bm, "check_login_state", logged_in)
@@ -138,7 +138,7 @@ async def test_headless_login_required_opens_a_headed_browser(monkeypatch) -> No
         modes.append(headless)
         bm.headless = headless
 
-    async def not_logged_in() -> bool:
+    async def not_logged_in(timeout_s: float = 0.0) -> bool:
         return False
 
     monkeypatch.setattr(bm, "_relaunch_locked", relaunch)
@@ -160,7 +160,7 @@ async def test_headless_promotion_returns_to_headless(monkeypatch) -> None:
         modes.append(headless)
         bm.headless = headless
 
-    async def logged_in() -> bool:
+    async def logged_in(timeout_s: float = 0.0) -> bool:
         return True
 
     monkeypatch.setattr(bm, "_relaunch_locked", relaunch)
@@ -182,7 +182,7 @@ async def test_startup_login_temporarily_uses_a_headed_browser(monkeypatch) -> N
         modes.append(headless)
         bm.headless = headless
 
-    async def not_logged_in() -> bool:
+    async def not_logged_in(timeout_s: float = 0.0) -> bool:
         return False
 
     async def wizard() -> None:
@@ -211,7 +211,7 @@ async def test_failed_switch_back_reopens_a_headed_browser(monkeypatch) -> None:
         modes.append(headless)
         bm.headless = headless
 
-    async def not_logged_in() -> bool:
+    async def not_logged_in(timeout_s: float = 0.0) -> bool:
         return False
 
     monkeypatch.setattr(bm, "_relaunch_locked", relaunch)

@@ -36,6 +36,11 @@ class LoginSpec:
     locale: str = "en-US"
 
 
+# Grace period for the login probe right after a (re)launch: SPAs render their
+# composer well after domcontentloaded.
+LOGIN_GRACE_S = 20.0
+
+
 def _host_os() -> str:
     if sys.platform == "win32":
         return "windows"
@@ -145,7 +150,7 @@ class BrowserManager:
     async def _start_locked(self, *, wait_for_login: bool = True) -> None:
         await self._launch()
         await self._navigate_base()
-        if await self.check_login_state():
+        if await self.check_login_state(LOGIN_GRACE_S):
             self.logged_in = True
             self.state = "ready"
             return
@@ -156,7 +161,7 @@ class BrowserManager:
         if self._default_headless and self.headless:
             logger.info("%s login required; opening a headed browser", self.login.name)
             await self._relaunch_locked(headless=False)
-            if await self.check_login_state():
+            if await self.check_login_state(LOGIN_GRACE_S):
                 self.logged_in = True
                 self.state = "ready"
                 if await self._switch_to_default_mode_locked():
@@ -172,7 +177,7 @@ class BrowserManager:
         if self.headless == self._default_headless:
             return self.logged_in
         await self._relaunch_locked(headless=self._default_headless)
-        if await self.check_login_state():
+        if await self.check_login_state(LOGIN_GRACE_S):
             self.logged_in = True
             self.state = "ready"
             return True
@@ -269,7 +274,7 @@ class BrowserManager:
         assert self.page is not None
         try:
             await asyncio.sleep(1.5)
-            self.logged_in = await self.check_login_state()
+            self.logged_in = await self.check_login_state(LOGIN_GRACE_S)
         finally:
             if self.logged_in:
                 self.state = "ready"
@@ -367,7 +372,21 @@ class BrowserManager:
         with contextlib.suppress(Exception):
             await self.page.goto(self.login.startup_url, wait_until="domcontentloaded")
 
-    async def check_login_state(self) -> bool:
+    async def check_login_state(self, timeout_s: float = 0.0) -> bool:
+        """Single-shot check, or poll until logged in or timeout_s expires.
+
+        SPA composers (chatglm, wenxin) can render seconds after
+        domcontentloaded; a one-shot probe misreads that as logged out and
+        triggers a needless headed relaunch, so startup paths pass a grace.
+        """
+        deadline = time.monotonic() + timeout_s
+        while True:
+            logged_in = await self._check_login_state_once()
+            if logged_in or time.monotonic() >= deadline:
+                return logged_in
+            await asyncio.sleep(1.0)
+
+    async def _check_login_state_once(self) -> bool:
         page = self.page
         if page is None:
             return False

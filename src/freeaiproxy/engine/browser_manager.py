@@ -135,6 +135,11 @@ class BrowserManager:
 
     async def start(self) -> None:
         async with self._lifecycle:
+            # Warm boot runs as a background task; a request may have already
+            # brought the browser up via ensure_available. Never launch twice
+            # against the same profile.
+            if self.is_running():
+                return
             await self._start_locked()
 
     async def _start_locked(self, *, wait_for_login: bool = True) -> None:

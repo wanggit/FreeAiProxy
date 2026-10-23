@@ -35,21 +35,38 @@ def create_app(config_path: Path | None = None, settings: Settings | None = None
         db = Database(Path("data/freeaiproxy.db"))
         await db.connect()
         runtimes: list[ProviderRuntime] = []
+        boot_task: asyncio.Task | None = None
         try:
             names = enabled_provider_names(cfg)
             if not names:
                 raise RuntimeError("no providers are enabled in config.toml")
             runtimes = [create_runtime(cfg, name, db) for name in names]
-            await asyncio.gather(*(rt.bm.start() for rt in runtimes))
 
             app.state.settings = cfg
             app.state.db = db
             app.state.runtimes = {rt.name: rt for rt in runtimes}
             app.state.bms = {rt.name: rt.bm for rt in runtimes}
             app.state.services = {rt.name: rt.service for rt in runtimes}
-            logger.info("FreeAiProxy ready (providers=%s)", ", ".join(names))
+
+            # Browsers take tens of seconds to come up; uvicorn only binds the
+            # port after this lifespan yields, so warm them in the background
+            # instead. Requests serialize behind each manager's lifecycle lock.
+            async def _boot() -> None:
+                results = await asyncio.gather(
+                    *(rt.bm.start() for rt in runtimes), return_exceptions=True
+                )
+                for rt, res in zip(runtimes, results, strict=True):
+                    if isinstance(res, BaseException):
+                        logger.error("provider %s failed to start: %r", rt.name, res)
+                    else:
+                        logger.info("provider %s ready", rt.name)
+
+            boot_task = asyncio.create_task(_boot())
+            logger.info("FreeAiProxy up; providers warming in background: %s", ", ".join(names))
             yield
         finally:
+            if boot_task is not None and not boot_task.done():
+                boot_task.cancel()
             for rt in runtimes:
                 await rt.bm.stop()
             await db.close()

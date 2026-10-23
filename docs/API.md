@@ -18,16 +18,17 @@ FreeAiProxy 把 DeepSeek 与腾讯元宝网页版包装成 OpenAI 兼容 API。�
 3. [模型](#3-模型)
 4. [Chat Completions](#4-chat-completions)
 5. [Images](#5-images)
-6. [生成文件](#6-生成文件)
-7. [模型列表](#7-模型列表)
-8. [健康检查与管理接口](#8-健康检查与管理接口)
-9. [会话机制](#9-会话机制)
-10. [附件与多模态](#10-附件与多模态)
-11. [流式响应](#11-流式响应)
-12. [错误格式](#12-错误格式)
-13. [并发与队列](#13-并发与队列)
-14. [配置项](#14-配置项)
-15. [兼容性与限制](#15-兼容性与限制)
+6. [Music](#6-music)
+7. [生成文件](#7-生成文件)
+8. [模型列表](#8-模型列表)
+9. [健康检查与管理接口](#9-健康检查与管理接口)
+10. [会话机制](#10-会话机制)
+11. [附件与多模态](#11-附件与多模态)
+12. [流式响应](#12-流式响应)
+13. [错误格式](#13-错误格式)
+14. [并发与队列](#14-并发与队列)
+15. [配置项](#15-配置项)
+16. [兼容性与限制](#16-兼容性与限制)
 
 ---
 
@@ -46,6 +47,7 @@ Authorization: Bearer sk-xxx
 
 - `POST /v1/chat/completions`
 - `POST /v1/images/generations`
+- `POST /v1/music/generations`
 - `GET /v1/models`
 - `GET /admin/status`
 - `POST /admin/relogin`
@@ -56,7 +58,7 @@ Authorization: Bearer sk-xxx
 - `GET /v1/files/{name}`（随机文件名的生成文件）
 - `GET /`
 
-鉴权失败返回 HTTP 401，错误类型见[错误格式](#12-错误格式)。
+鉴权失败返回 HTTP 401，错误类型见[错误格式](#13-错误格式)。
 
 ---
 
@@ -128,6 +130,7 @@ resp = client.chat.completions.create(
 | `yuanbao-ppt` | 元宝 | Presentation Maker | chat + artifact |
 | `wenxin-image` | 文心 | 图片生成 | image（也支持 chat） |
 | `wenxin-writing` | 文心 | 帮我写作 | chat |
+| `wenxin-music` | 文心 | 音乐生成（曲风/音色/歌词） | music（也支持 chat） |
 | `chatglm-glm5.3` | 智谱清言 | GLM-5.3 深度思考 | chat |
 | `chatglm-image` | 智谱清言 | AI画图（GLM Image） | image（也支持 chat） |
 
@@ -142,6 +145,8 @@ resp = client.chat.completions.create(
 - **Writing**：`yuanbao-writing` 使用 Writing agent，返回 markdown；未提供模板选择，默认 General。
 - **Image**：`yuanbao-image` 一次生成 4 张图；可以用 Images 接口或 Chat 接口。
 - **PPT**：`yuanbao-ppt` 返回摘要 + 本地 `.pptx` 链接；生成可能耗时数分钟。
+- **Music**：`wenxin-music` 返回本地音频链接（实测为 FLAC）；网页端生成约 2–3 分钟。
+  曲风 / 音色 / 歌词三个选项仅 Music 接口支持，Chat 接口按网页默认值生成。
 
 每个请求都会显式对齐网页上的模型/模式，因此可以在同一会话中切换模型。
 
@@ -220,7 +225,7 @@ Content-Type: application/json
 | `input_audio` | 当前不支持，内容被忽略 |
 | 其他 | 返回 400 |
 
-附件细节见[附件与多模态](#10-附件与多模态)。
+附件细节见[附件与多模态](#11-附件与多模态)。
 
 ### 4.5 非流式响应
 
@@ -450,7 +455,44 @@ print(resp.data[0].url)
 
 ---
 
-## 6. 生成文件
+## 6. Music
+
+### 6.1 Endpoint
+
+```http
+POST /v1/music/generations
+```
+
+### 6.2 请求体
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `model` | string | `wenxin-music` | 目前仅支持 `wenxin-music` |
+| `prompt` | string | 必填* | 音乐主题描述（*与 `lyrics` 至少给一个） |
+| `style` | string | 网页默认 | 曲风：`默认` / `摇滚` / `电子` / `R&B` / `嘻哈` / `金属` / `蓝调` / `流行` / `民谣` / `爵士` / `说唱` / `拉丁` / `朋克` |
+| `voice` | string | 智能匹配 | 音色：`智能匹配` / `深情男声` / `甜美女声` |
+| `lyrics` | string | 无 | 提供后自动切到「自定义歌词」并以此作为歌词；否则用「AI写歌词」按 `prompt` 生成 |
+
+非法 `style` / `voice` 返回 `invalid_request_error`。
+
+### 6.3 响应
+
+```json
+{
+  "created": 1792737258,
+  "data": [{"url": "http://127.0.0.1:8000/v1/files/b869df25….flac"}]
+}
+```
+
+### 6.4 行为与限制
+
+- 每次生成 1 首；网页端约 2–3 分钟，接口同步等待（占用该 provider 队列）。
+- 实测音频为 FLAC 编码（对象名虽为 `.mp3`），网关按内容魔数落盘为 `.flac`。
+- 生成文件不会自动清理；文件下载接口不需要 API Key。
+
+---
+
+## 7. 生成文件
 
 ```http
 GET /v1/files/{name}
@@ -459,7 +501,7 @@ GET /v1/files/{name}
 用途：下载 `data/generated/` 中的生图或 PPTX。
 
 - 文件名格式：32 位小写 hex + 扩展名。
-- 允许扩展名：`.png`、`.webp`、`.jpg`、`.pptx`。
+- 允许扩展名：`.png`、`.webp`、`.jpg`、`.pptx`、`.mp3`、`.wav`、`.flac`。
 - 不存在或名字非法返回 404。
 - 图片以 `Cache-Control: public, max-age=86400` 返回。
 - `.pptx` 以附件形式返回。
@@ -476,7 +518,7 @@ curl -O http://127.0.0.1:8000/v1/files/42d0c6dcaa7c4e9580c2e02c1cef7809.png
 
 ---
 
-## 7. 模型列表
+## 8. 模型列表
 
 ```http
 GET /v1/models
@@ -504,9 +546,9 @@ GET /v1/models
 
 ---
 
-## 8. 健康检查与管理接口
+## 9. 健康检查与管理接口
 
-### 8.1 GET /healthz
+### 9.1 GET /healthz
 
 无需鉴权。
 
@@ -535,7 +577,7 @@ GET /v1/models
 - `state` 可能为 `stopped`、`starting`、`ready`、`login_required`。
 - 可用于健康探测和登录态轮询。
 
-### 8.2 GET /admin/status
+### 9.2 GET /admin/status
 
 需要鉴权（若配置了 api_key）。
 
@@ -594,7 +636,7 @@ GET /v1/models
 顶层字段 `state` / `logged_in` / `queue` 等与第一个 provider 保持一致，仅用于兼容旧客户端；
 请优先使用 `providers`。
 
-### 8.3 POST /admin/relogin
+### 9.3 POST /admin/relogin
 
 需要鉴权（若配置了 api_key）。
 
@@ -621,9 +663,9 @@ POST /admin/relogin?provider=yuanbao
 
 ---
 
-## 9. 会话机制
+## 10. 会话机制
 
-### 9.1 session_id 的来源
+### 10.1 session_id 的来源
 
 按优先级：
 
@@ -636,13 +678,13 @@ POST /admin/relogin?provider=yuanbao
 - 非流式：响应头 `X-Session-Id` + 响应体顶层 `session_id`。
 - 流式：响应头 `X-Session-Id` + 首个/最后 SSE chunk 顶层 `session_id`。
 
-### 9.2 显式 session_id
+### 10.2 显式 session_id
 
 - 不存在、已失效或属于另一个 provider：404 `session_invalid`。
 - 显式 session 可以在同一 provider 内切换模型/模式。
 - 已存在会话中，system 消息忽略。
 
-### 9.3 自动匹配
+### 10.3 自动匹配
 
 - 只在同一 provider + 同一 mode 的活跃会话中查找。
 - 只比较 **user 轮次**；assistant 文本完全不参与比较。
@@ -651,7 +693,7 @@ POST /admin/relogin?provider=yuanbao
 - 选择 `k` 最大的候选；`k` 相同优先“重复回放”而不是“发送新消息”。
 - 没有候选时创建新会话。
 
-### 9.4 历史 diff 规则
+### 10.4 历史 diff 规则
 
 | 情况 | 行为 |
 |---|---|
@@ -671,7 +713,7 @@ POST /admin/relogin?provider=yuanbao
   只发送一条全新的“继续”会因首轮 user 对不上而返回 400 `history_conflict`。
 - 不要在一次请求里追加多条 user 消息。
 
-### 9.5 模式与续接
+### 10.5 模式与续接
 
 - 会话记录 `provider` 和最近使用的 `mode`。
 - 元宝页面刷新后会回到普通聊天；网关在续接时会重新进入目标模式
@@ -682,9 +724,9 @@ POST /admin/relogin?provider=yuanbao
 
 ---
 
-## 10. 附件与多模态
+## 11. 附件与多模态
 
-### 10.1 支持形式
+### 11.1 支持形式
 
 - `image_url`：
   - data URL：`data:image/png;base64,...`
@@ -694,7 +736,7 @@ POST /admin/relogin?provider=yuanbao
   - `file_data`：base64 字符串或 data URL
   - 也接受 `data` 字段作为 `file_data` 的别名
 
-### 10.2 限制
+### 11.2 限制
 
 由 `config.toml` 的 `[attach]` 控制，默认：
 
@@ -718,7 +760,7 @@ allowed_extensions = [".png", ".jpg", ..., ".pdf", ".docx", ...]
 - 附件内容不写入本地会话历史，历史只保存 user 文本和 assistant 文本；
   网页本身会保留附件上下文。
 
-### 10.3 多模态示例
+### 11.3 多模态示例
 
 ```bash
 curl http://127.0.0.1:8000/v1/chat/completions \
@@ -749,7 +791,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 
 ---
 
-## 11. 流式响应
+## 12. 流式响应
 
 请求：
 
@@ -801,7 +843,7 @@ data: [DONE]
   不会因为客户端断开而丢弃会话上下文。
 - 流式请求在整个 SSE 生命周期内占用该 provider 的队列名额。
 
-### 11.1 OpenAI SDK 流式示例
+### 12.1 OpenAI SDK 流式示例
 
 ```python
 stream = client.chat.completions.create(
@@ -815,7 +857,7 @@ for chunk in stream:
         print(delta, end="", flush=True)
 ```
 
-### 11.2 特殊模型的流式行为
+### 12.2 特殊模型的流式行为
 
 - `yuanbao-image`（chat）：生成完成后返回一个包含 4 个 markdown 链接的 content chunk。
 - `yuanbao-ppt`：摘要可能增量返回，完成后追加本地 PPTX 链接。
@@ -823,7 +865,7 @@ for chunk in stream:
 
 ---
 
-## 12. 错误格式
+## 13. 错误格式
 
 统一使用 OpenAI 风格：
 
@@ -838,7 +880,7 @@ for chunk in stream:
 }
 ```
 
-### 12.1 业务错误
+### 13.1 业务错误
 
 | HTTP | type | code | 触发场景 |
 |---|---|---|---|
@@ -867,7 +909,7 @@ for chunk in stream:
 }
 ```
 
-### 12.2 上游超时
+### 13.2 上游超时
 
 - 首字/完成超时可能返回部分内容或空字符串，`finish_reason` 仍为 `stop`。
 - 请检查 `content` 是否为空，不要只依赖 `finish_reason` 判断成功。
@@ -875,7 +917,7 @@ for chunk in stream:
 
 ---
 
-## 13. 并发与队列
+## 14. 并发与队列
 
 - 每个 provider 只有一个浏览器窗口，因此该 provider 内所有请求严格 FIFO 串行。
 - 每个请求操作页面前都会检查该 provider 的浏览器；若已关闭、崩溃或无响应，
@@ -903,7 +945,7 @@ for chunk in stream:
 
 ---
 
-## 14. 配置项
+## 15. 配置项
 
 与 API 行为相关的配置：
 
@@ -953,13 +995,13 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 
 优先级：环境变量 > `config.toml` > 默认值。
 
-### 14.1 生成文件目录
+### 15.1 生成文件目录
 
 - 图片和 PPT 保存在 `data/generated/`。
 - 通过 `/v1/files/{name}` 提供下载。
 - 不会自动清理；需要时手动清理旧文件。
 
-### 14.2 远程部署提示
+### 15.2 远程部署提示
 
 - 聊天模型返回的图片/PPT 链接使用 `server.host:server.port` 构造；
   若 `server.host` 为 `0.0.0.0` 或 `::`，会回退到 `127.0.0.1`。
@@ -970,9 +1012,9 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 
 ---
 
-## 15. 兼容性与限制
+## 16. 兼容性与限制
 
-### 15.1 支持的 OpenAI 能力
+### 16.1 支持的 OpenAI 能力
 
 - Chat Completions（非流式 + SSE）
 - Images Generations（`url` / `b64_json`）
@@ -981,7 +1023,7 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 - OpenAI 错误格式
 - `X-Session-Id` 扩展会话
 
-### 15.2 不支持/忽略的能力
+### 16.2 不支持/忽略的能力
 
 - `tools` / `function calling`
 - `response_format`
@@ -994,7 +1036,7 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 
 这些字段不会导致请求失败，但不会生效。
 
-### 15.3 网页侧行为与限制
+### 16.3 网页侧行为与限制
 
 - 免费网页版有账号额度/限流；网关只做串行排队，不放大请求。
 - 自动化操作可能违反 DeepSeek / 元宝服务条款，请使用非主力账号。

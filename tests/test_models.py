@@ -21,6 +21,7 @@ EXPECTED = {
     "yuanbao-ppt",
     "wenxin-image",
     "wenxin-writing",
+    "wenxin-music",
     "chatglm-glm5.3",
     "chatglm-image",
 }
@@ -58,6 +59,10 @@ def test_wenxin_specs():
     assert image.kind == "image"
     assert image.agent == "image"
     assert get_model_spec("wenxin-writing").agent == "writing"
+    music = get_model_spec("wenxin-music")
+    assert music.provider == "wenxin"
+    assert music.kind == "music"
+    assert music.agent == "music"
 
 
 def test_chatglm_specs():

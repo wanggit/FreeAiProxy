@@ -12,6 +12,7 @@
 |---|---|---|
 | `wenxin-image` | 图片生成 | 已接入（无水印） |
 | `wenxin-writing` | 帮我写作 | 已接入（提示词→文本） |
+| `wenxin-music` | 音乐生成 | 已接入（曲风/音色/歌词，`/v1/music` 或 chat） |
 
 ## 2. 登录与会话
 
@@ -35,3 +36,25 @@
 - 无水印：直接对 URL 去掉 `&wm=...`、`&wmo=...`（`_watermark_free`）后 httpx 下载，
   存 `data/generated/`，经 `/v1/files/<name>` 返回。实测无头/有头均无水印。
 - 文心 composer 无宽高比控件，`select_image_ratio` 为空操作；`size` 仅元宝生效。
+
+## 5. 音乐生成
+
+- 入口不在默认 capsule 行里：先用**真实鼠标点击**展开 `.more-dropdown-trigger`
+  （“更多”，合成事件不生效），DOM 中才会出现文本为“音乐生成”的 `.capsule-text`，
+  再按普通 capsule 点击进入。
+- 音乐 composer 有三个指令触发器（`.ci-tooltip`）：选曲风 / 选音色 / AI写歌词；
+  选中后触发器文本变为所选值。弹层选项是 `.music-directive-button`，
+  点击即生效（无需确认按钮）。
+  - 曲风：默认/摇滚/电子/R&B/嘻哈/金属/蓝调/流行/民谣/爵士/说唱/拉丁/朋克。
+  - 音色：智能匹配（默认）/深情男声/甜美女声。
+  - 歌词：AI写歌词（默认，`prompt` 作为主题描述）或自定义歌词（把歌词直接
+    敲进 `div.ci-editor`）。
+- 发送后 answer 容器先显示“AI音乐创作中，预计需要2分钟”占位（`.ai-music-player`
+  带 loading 图标、无 `<audio>`）；**同一个** answer 容器随后被替换为成品，
+  `aCount` 不增加，因此完成判定是：`.ai-music-player` 内出现非 blob 的
+  `<audio>/<source>` src 且 loading 图标消失且 URL 稳定。
+- 成品 src 是 `aigc-idea-platform.bj.bcebos.com/...mp3?authorization=bce-auth-v1...`
+  签名直链，可离线 httpx 下载；对象名虽为 `.mp3`，实测内容是 FLAC，
+  网关按魔数落盘 `.flac` 并经 `/v1/files/<name>` 返回。
+- 探测记录：`poc/wenxin_music_probe1..7.py`（更多下拉、指令弹层选项、
+  端到端生成与轮询）。

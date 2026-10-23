@@ -99,6 +99,8 @@ class ChatService:
             await self.bm.ensure_available()
             if spec.kind == "image":
                 content = await self._execute_image(res, spec)
+            elif spec.kind == "music":
+                content = await self._execute_music(res, spec)
             elif spec.agent == "ppt":
                 content = await self._execute_ppt(res, spec)
             else:
@@ -124,6 +126,36 @@ class ChatService:
             await self.driver.send_user_message(prompt, attachments=[], spec=spec)
             urls = await self.driver.wait_images(pre)
             return await self._save_generated_images(urls[:limit])
+        finally:
+            self.queue.release()
+
+    async def generate_music(
+        self,
+        prompt: str,
+        spec: ModelSpec,
+        *,
+        style: str | None = None,
+        voice: str | None = None,
+        lyrics: str | None = None,
+    ) -> SavedImage:
+        if spec.kind != "music":
+            raise UpstreamError(f"model '{spec.id}' does not generate music")
+        waited_ms = await self.queue.acquire()
+        if waited_ms > 1000:
+            logger.info("music request waited %dms in the queue", waited_ms)
+        try:
+            await self.bm.ensure_available()
+            await self.driver.goto_new_chat()
+            await self.driver.prepare(spec)
+            await self.driver.select_music_options(
+                style=style, voice=voice, custom_lyrics=bool(lyrics)
+            )
+            pre = await self.driver.snapshot()
+            await self.driver.send_user_message(
+                (lyrics or prompt).strip(), attachments=[], spec=spec
+            )
+            urls = await self.driver.wait_music(pre)
+            return await self._save_music(urls[0])
         finally:
             self.queue.release()
 
@@ -170,6 +202,14 @@ class ChatService:
         urls = await self.driver.wait_images(pre)
         saved = await self._save_generated_images(urls)
         content = self._image_markdown(saved)
+        await self._finalize(res, content, spec)
+        return content
+
+    async def _execute_music(self, res: Resolution, spec: ModelSpec) -> str:
+        pre = await self._navigate_and_send(res, spec)
+        urls = await self.driver.wait_music(pre)
+        clip = await self._save_music(urls[0])
+        content = f"[generated music]({file_url(self.settings, clip.name)})"
         await self._finalize(res, content, spec)
         return content
 
@@ -222,6 +262,25 @@ class ChatService:
                 saved.append(SavedImage(name=path.name, path=path))
         return saved
 
+    async def _save_music(self, url: str) -> SavedImage:
+        try:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise UpstreamError(f"failed to download generated music: {exc}") from exc
+        ctype = resp.headers.get("content-type", "").lower()
+        body = resp.content
+        if body[:4] == b"fLaC" or "flac" in ctype:
+            ext = ".flac"
+        elif body[:4] == b"RIFF" or "wav" in ctype:
+            ext = ".wav"
+        else:
+            ext = ".mp3"
+        path = new_artifact_path(ext)
+        path.write_bytes(body)
+        return SavedImage(name=path.name, path=path)
+
     def _image_markdown(self, images: list[SavedImage]) -> str:
         return "\n\n".join(
             f"![generated image {i}]({file_url(self.settings, image.name)})"
@@ -246,6 +305,10 @@ class ChatService:
             await self.bm.ensure_available()
             if spec.kind == "image":
                 async for chunk in self._stream_image(res, spec):
+                    yield chunk
+                return
+            if spec.kind == "music":
+                async for chunk in self._stream_music(res, spec):
                     yield chunk
                 return
             if spec.agent == "ppt":
@@ -289,6 +352,23 @@ class ChatService:
                 urls = await self.driver.wait_images(pre)
                 saved = await self._save_generated_images(urls)
                 await self._finalize(res, self._image_markdown(saved), spec)
+            raise
+
+    async def _stream_music(self, res: Resolution, spec: ModelSpec) -> AsyncIterator[str]:
+        pre = await self._navigate_and_send(res, spec)
+        try:
+            urls = await self.driver.wait_music(pre)
+            clip = await self._save_music(urls[0])
+            content = f"[generated music]({file_url(self.settings, clip.name)})"
+            await self._finalize(res, content, spec)
+            yield content
+        except (asyncio.CancelledError, GeneratorExit):
+            with suppress(Exception):
+                urls = await self.driver.wait_music(pre)
+                clip = await self._save_music(urls[0])
+                await self._finalize(
+                    res, f"[generated music]({file_url(self.settings, clip.name)})", spec
+                )
             raise
 
     async def _stream_ppt(self, res: Resolution, spec: ModelSpec) -> AsyncIterator[str]:

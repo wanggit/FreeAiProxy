@@ -1,8 +1,8 @@
 """Wenxin (文心) browser driver.
 
 Base chat (send + completion + session resume) is calibrated against the live
-page (2026-10-23) and backs the `wenxin-writing` model. Image and PPT result
-handling are still pending calibration and raise explicitly.
+page (2026-10-23) and backs the `wenxin-writing` model, plus the 图片生成 and
+音乐生成 agents.
 """
 
 from __future__ import annotations
@@ -116,6 +116,37 @@ IMAGES_JS = """
 _WM_PARAMS = re.compile(r"&w[mo]=[^&?]*")
 
 
+# 音乐生成 result: the answer container first shows an "AI音乐创作中" placeholder
+# inside .ai-music-player (a loading icon, no <audio>), then ~2 minutes later the
+# same container gains an <audio> whose src is a signed BOS mp3 link
+# (verified 2026-10-23).
+MUSIC_RESULT_JS = """
+() => {
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+  };
+  const as = Array.from(document.querySelectorAll('[class*="conversation-flow-answer-container"]'));
+  const last = as.length ? as[as.length - 1] : null;
+  const srcs = [];
+  let loading = false;
+  if (last) {
+    for (const p of last.querySelectorAll('.ai-music-player')) {
+      if (!visible(p)) continue;
+      if (p.querySelector('[class*="loading"]')) loading = true;
+      for (const a of p.querySelectorAll('audio, source')) {
+        const src = a.currentSrc || a.src || '';
+        if (src && !src.startsWith('blob:') && !srcs.includes(src)) srcs.push(src);
+      }
+    }
+  }
+  const text = last ? (last.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 200) : '';
+  return {aCount: as.length, srcs, loading, text};
+}
+"""
+
+
 class WenxinDriver:
     def __init__(self, bm: BrowserManager, settings: Settings):
         self.bm = bm
@@ -138,6 +169,9 @@ class WenxinDriver:
     async def prepare(self, spec: ModelSpec) -> None:
         if await self._login_visible():
             raise NotLoggedInError(f"{self.bm.login.name} shows the login panel")
+        if spec.agent == "music":
+            await self._enter_music()
+            return
         label = {
             "image": S.MODE_IMAGE,
             "writing": S.MODE_WRITING,
@@ -304,6 +338,88 @@ class WenxinDriver:
     @staticmethod
     def _watermark_free(url: str) -> str:
         return _WM_PARAMS.sub("", url)
+
+    async def select_music_options(
+        self,
+        style: str | None = None,
+        voice: str | None = None,
+        custom_lyrics: bool = False,
+    ) -> None:
+        if custom_lyrics:
+            await self._pick_directive(S.MUSIC_LYRICS_TRIGGER, S.MUSIC_LYRICS_CUSTOM)
+        if style:
+            await self._pick_directive(S.MUSIC_STYLE_TRIGGER, style)
+        if voice:
+            await self._pick_directive(S.MUSIC_VOICE_TRIGGER, voice)
+
+    async def wait_music(self, pre: WenxinPreState) -> list[str]:
+        poll = max(self.settings.worker.poll_interval_ms / 1000.0, 1.0)
+        deadline = time.monotonic() + self.settings.worker.timeout_completion_s
+        last_sig = ""
+        stable = 0
+        while time.monotonic() < deadline:
+            await asyncio.sleep(poll)
+            if await self._login_visible():
+                raise NotLoggedInError(f"{self.bm.login.name} shows the login panel")
+            data = await self.page.evaluate(MUSIC_RESULT_JS)
+            srcs = data["srcs"]
+            sig = "|".join(srcs)
+            if srcs and sig == last_sig:
+                stable += 1
+            else:
+                stable = 0
+                last_sig = sig
+            if srcs and not data["loading"] and stable >= 2:
+                return srcs
+        raise UpstreamPageChangedError("the page did not produce a generated clip in time")
+
+    async def _enter_music(self) -> None:
+        # 音乐生成 lives behind the 更多 dropdown, which ignores synthetic
+        # clicks; open it with a real mouse click first (verified 2026-10-23).
+        if not await self._capsule_visible(S.MODE_MUSIC):
+            try:
+                await self.page.locator(S.MORE_TRIGGER).first.click(timeout=8000)
+            except Exception as exc:
+                raise UpstreamPageChangedError(
+                    "Wenxin 更多 dropdown trigger is not available"
+                ) from exc
+            await asyncio.sleep(0.8)
+        if not await self._click_capsule(S.MODE_MUSIC):
+            raise UpstreamPageChangedError("Wenxin mode capsule 音乐生成 is not available")
+        try:
+            await self.page.locator(S.EDITOR).first.wait_for(state="visible", timeout=10000)
+        except Exception as exc:
+            raise UpstreamPageChangedError("Wenxin did not show the 音乐生成 composer") from exc
+
+    async def _capsule_visible(self, label: str) -> bool:
+        return bool(
+            await self.page.evaluate(
+                """(label) => Array.from(document.querySelectorAll('.capsule-text'))
+                     .some(s => (s.innerText||'').replace(/\\s+/g,' ').trim() === label)""",
+                label,
+            )
+        )
+
+    async def _pick_directive(self, trigger: str, value: str) -> None:
+        tip = self.page.locator(f"{S.MUSIC_TOOL_TIP}:has-text('{trigger}')").first
+        try:
+            await tip.click(timeout=6000)
+        except Exception as exc:
+            raise UpstreamPageChangedError(
+                f"Wenxin music option '{trigger}' is not available"
+            ) from exc
+        await asyncio.sleep(0.8)
+        try:
+            await self.page.locator(f"{S.MUSIC_OPTION}:text-is('{value}')").first.click(
+                timeout=5000
+            )
+        except Exception as exc:
+            with contextlib.suppress(Exception):
+                await self.page.keyboard.press("Escape")
+            raise UpstreamPageChangedError(
+                f"Wenxin music choice '{value}' is not available"
+            ) from exc
+        await asyncio.sleep(0.8)
 
     async def _wait_new_answer(self, pre: WenxinPreState, timeout_s: float) -> bool:
         deadline = time.monotonic() + timeout_s

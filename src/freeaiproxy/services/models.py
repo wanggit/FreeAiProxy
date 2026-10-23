@@ -5,7 +5,7 @@ from typing import Literal
 
 from freeaiproxy.engine.errors import InvalidRequestError
 
-Kind = Literal["chat", "image"]
+Kind = Literal["chat", "image", "music"]
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,7 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("yuanbao-ppt", "yuanbao", mode="ppt", agent="ppt"),
     ModelSpec("wenxin-image", "wenxin", kind="image", mode="image", agent="image"),
     ModelSpec("wenxin-writing", "wenxin", mode="writing", agent="writing"),
+    ModelSpec("wenxin-music", "wenxin", kind="music", mode="music", agent="music"),
     ModelSpec("chatglm-glm5.3", "chatglm", mode="chat"),
     ModelSpec("chatglm-image", "chatglm", kind="image", mode="image", agent="image"),
 )

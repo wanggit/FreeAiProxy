@@ -18,7 +18,7 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - Each provider has its own BrowserManager, driver, FIFO RequestQueue and profile. Serialize all page work per provider through its queue; never access one provider's page concurrently. Cross-provider requests may run in parallel.
 - Browser-bound requests call `bm.ensure_available()` inside the provider queue. It relaunches a closed, crashed or unresponsive browser from the persisted profile; keep the check inside the queue so recovery stays serialized.
 - Conversations are scoped by provider. Auto-match also scopes by mode; an explicit session may switch modes but not providers.
-- Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`. Wenxin adds `wenxin-image` and `wenxin-writing`. ChatGLM (智谱清言) adds `chatglm-glm5.3` and `chatglm-image`.
+- Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`. Wenxin adds `wenxin-image`, `wenxin-writing` and `wenxin-music`. ChatGLM (智谱清言) adds `chatglm-glm5.3` and `chatglm-image`.
 - Expert mode has no Search entry in its Add menu. Search is intentionally exposed on Hy3 + Instant; do not try to force it into Expert.
 
 ## Yuanbao invariants
@@ -42,6 +42,7 @@ FreeAiProxy wraps DeepSeek and Tencent Yuanbao web UIs (Camoufox/Playwright) beh
 - The home (对话) composer is `textarea.ci-textarea`, but every agent mode (图片生成/帮我写作/PPT生成) replaces it with a contenteditable `div.ci-editor`; send via `.ci-submit-button`. Enter also submits but is less reliable, so click the button.
 - The answer is the last `[class*="conversation-flow-answer-container"]`; its text is `.cosd-markdown` (follow-up suggestion chips live outside it). Completion = a new answer container appeared, `.cosd-markdown-loading` is gone and the text is stable.
 - Image: generated `<img>` srcs are on `gips*.baidu.com/it/u=...`; the src carries a `wm=`/`wmo=` watermark. Stripping those params (`_watermark_free`) yields the clean original — download that, do not expose the watermarked URL. Wenxin's composer has no aspect-ratio control, so `select_image_ratio` is a no-op.
+- Music (音乐生成) lives behind the 更多 dropdown, which ignores synthetic clicks: open `.more-dropdown-trigger` with a real mouse click, then click the 音乐生成 capsule. The three directives (选曲风/选音色/AI写歌词) are `.ci-tooltip` triggers whose text becomes the chosen value; options are `.music-directive-button` items. Generation is async in the *same* answer container ("AI音乐创作中" placeholder first, `aCount` never increases): completion = a non-blob `<audio>` src inside `.ai-music-player`, loading icon gone, URL stable. The signed BOS link is named `.mp3` but is actually FLAC — `_save_music` sniffs the magic and stores `.flac`.
 
 ## ChatGLM (智谱清言) invariants
 

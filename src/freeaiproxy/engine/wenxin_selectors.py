@@ -1,7 +1,7 @@
 """Selectors and page constants for the Baidu Wenxin (文心) web UI.
 
-Calibrated against the live logged-in page on 2026-10-23. Image / PPT result
-controls are still pending calibration and are marked TODO.
+Calibrated against the live logged-in page on 2026-10-23, including the
+音乐生成 (music) composer and its 曲风 / 音色 / 歌词 directives.
 """
 
 from __future__ import annotations
@@ -37,6 +37,27 @@ LOADING = ".cosd-markdown-loading"
 MODE_CAPSULE = ".capsule-text"
 MODE_IMAGE = "图片生成"
 MODE_WRITING = "帮我写作"
+
+# 音乐生成 is not on the visible capsule row: it only appears in the DOM after
+# the .more-dropdown-trigger ("更多") is opened with a real mouse click
+# (synthetic clicks do not expand it; verified 2026-10-23).
+MORE_TRIGGER = ".more-dropdown-trigger"
+MODE_MUSIC = "音乐生成"
+# The music composer exposes three directive triggers (.ci-tooltip) whose text
+# becomes the chosen value after selection.
+MUSIC_TOOL_TIP = ".ci-tooltip"
+MUSIC_OPTION = ".music-directive-button"
+MUSIC_STYLE_TRIGGER = "选曲风"
+MUSIC_VOICE_TRIGGER = "选音色"
+MUSIC_LYRICS_TRIGGER = "AI写歌词"
+MUSIC_STYLES = (
+    "默认", "摇滚", "电子", "R&B", "嘻哈", "金属", "蓝调",
+    "流行", "民谣", "爵士", "说唱", "拉丁", "朋克",
+)
+MUSIC_VOICES = ("智能匹配", "深情男声", "甜美女声")
+MUSIC_LYRICS_AUTO = "AI写歌词"
+MUSIC_LYRICS_CUSTOM = "自定义歌词"
+MUSIC_PLAYER = ".ai-music-player"
 
 # Login detection. Verified 2026-10-23 against the Baidu passport modal that
 # overlays the home page when signed out.

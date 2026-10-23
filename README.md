@@ -2,7 +2,8 @@
 
 把 **DeepSeek** 与 **腾讯元宝** 网页版包装成 **OpenAI 兼容 API**。用反检测浏览器
 （Camoufox）驱动 https://chat.deepseek.com/ 和 https://yuanbao.tencent.com/ ，对外暴露
-`POST /v1/chat/completions` 和 `POST /v1/images/generations`，任何支持 OpenAI 协议的
+`POST /v1/chat/completions`、`POST /v1/images/generations` 和
+`POST /v1/music/generations`，任何支持 OpenAI 协议的
 客户端都能接入。
 
 - 多 Provider：DeepSeek 与元宝可同时在线，各自独立浏览器、登录态和 FIFO 队列
@@ -58,6 +59,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 | `yuanbao-ppt` | 元宝 | Presentation Maker（PPT 生成） |
 | `wenxin-image` | 文心 | 图片生成（无水印，`/v1/images` 或 chat） |
 | `wenxin-writing` | 文心 | 帮我写作（提示词→文本） |
+| `wenxin-music` | 文心 | 音乐生成（曲风/音色/歌词，`/v1/music` 或 chat） |
 | `chatglm-glm5.3` | 智谱清言 | GLM-5.3 深度思考 |
 | `chatglm-image` | 智谱清言 | AI画图 GLM Image 模式（无水印，`/v1/images` 或 chat） |
 
@@ -139,6 +141,20 @@ curl http://127.0.0.1:8000/v1/images/generations \
   `http://127.0.0.1:8000/v1/files/<name>`。
 - `response_format` 可选 `url`（默认）或 `b64_json`。
 - 也可以用 `/v1/chat/completions` 调 `yuanbao-image`，返回 4 个 markdown 图片链接。
+
+## 音乐生成
+
+```bash
+curl http://127.0.0.1:8000/v1/music/generations \
+  -H "Content-Type: application/json" \
+  -d '{"model":"wenxin-music","prompt":"雨后城市散步的轻快小调","style":"摇滚","voice":"深情男声","lyrics":"[主歌]\n..."}'
+```
+
+- 文心「更多 → 音乐生成」：`style` 选曲风（13 种），`voice` 选音色
+  （智能匹配/深情男声/甜美女声），给 `lyrics` 即切「自定义歌词」，否则「AI写歌词」。
+- 网页端约 2–3 分钟生成 1 首，接口同步等待；实测为 FLAC，存 `data/generated/`
+  并返回 `http://127.0.0.1:8000/v1/files/<name>.flac`。
+- 也可以用 `/v1/chat/completions` 调 `wenxin-music`（选项走网页默认值）。
 
 ## PPT 生成
 
@@ -229,8 +245,9 @@ uv run python scripts/manage.py build      # uv build，产物在 dist/
 |---|---|
 | `POST /v1/chat/completions` | 对话（支持 `stream: true`） |
 | `POST /v1/images/generations` | 元宝 AI 生图 |
+| `POST /v1/music/generations` | 文心音乐生成（曲风/音色/歌词） |
 | `GET /v1/models` | 模型列表（两个 provider 合并） |
-| `GET /v1/files/{name}` | 下载生成的图片 / PPTX |
+| `GET /v1/files/{name}` | 下载生成的图片 / PPTX / 音频 |
 | `GET /healthz` | 服务与各 provider 登录态 |
 | `GET /admin/status` | 诊断信息（含各 provider 队列） |
 | `POST /admin/relogin?provider=yuanbao` | 触发指定 provider 重新登录 |

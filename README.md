@@ -2,7 +2,7 @@
 
 把 **DeepSeek**、**腾讯元宝**、**百度文心**、**智谱清言** 与 **字节豆包** 网页版包装成
 **OpenAI 兼容 API**。用反检测浏览器（Camoufox）驱动各站点，对外暴露
-`POST /v1/chat/completions`、`POST /v1/images/generations`、
+`POST /v1/chat/completions`、`POST /v1/images/generations`、`POST /v1/images/edits`、
 `POST /v1/videos/generations` 和 `POST /v1/music/generations`，任何支持 OpenAI 协议的
 客户端都能接入。
 
@@ -13,6 +13,7 @@
 - 智谱清言：GLM-5.3 深度思考、AI画图（无水印）
 - 豆包：普通对话、Seedream 生图、Seedance 视频生成、音乐生成
 - 支持流式（SSE）、会话续接、附件上传（图片 / 文档）
+- 生图支持参考图（图生图）：元宝 / 豆包 / 智谱清言可传参考图，文心网页无入口
 - 生图、视频、PPT、音频落盘为本地文件，由网关提供下载链接
 - 登录一次长期复用（持久化浏览器 profile）
 - 支持无头运行；仅在需要登录时临时弹出有头浏览器，登录成功后自动切回
@@ -61,15 +62,15 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 | `yuanbao-hunyuan-instant` | 元宝 | Hy3 + Instant |
 | `yuanbao-hunyuan-search` | 元宝 | Hy3 + Instant + 强制联网搜索 |
 | `yuanbao-writing` | 元宝 | Writing（专业写作） |
-| `yuanbao-image` | 元宝 | AI Image（Hy Image3.5） |
+| `yuanbao-image` | 元宝 | AI Image（Hy Image3.5，支持参考图） |
 | `yuanbao-ppt` | 元宝 | Presentation Maker（PPT 生成） |
-| `wenxin-image` | 文心 | 图片生成（无水印，`/v1/images` 或 chat） |
+| `wenxin-image` | 文心 | 图片生成（无水印，`/v1/images` 或 chat；不支持参考图） |
 | `wenxin-writing` | 文心 | 帮我写作（提示词→文本） |
 | `wenxin-music` | 文心 | 音乐生成（曲风/音色/歌词，`/v1/music` 或 chat） |
 | `chatglm-glm5.3` | 智谱清言 | GLM-5.3 深度思考 |
-| `chatglm-image` | 智谱清言 | AI画图 GLM Image 模式（无水印，`/v1/images` 或 chat） |
+| `chatglm-image` | 智谱清言 | AI画图 GLM Image 模式（无水印，支持参考图，`/v1/images` 或 chat） |
 | `doubao-chat` | 豆包 | 普通对话 |
-| `doubao-image` | 豆包 | Seedream 图像生成（模型/比例/风格，`/v1/images` 或 chat） |
+| `doubao-image` | 豆包 | Seedream 图像生成（模型/比例/风格，支持参考图，`/v1/images` 或 chat） |
 | `doubao-video` | 豆包 | Seedance 视频生成（模型/比例/时长，`/v1/videos`） |
 | `doubao-music` | 豆包 | 音乐生成（曲风/情绪/音色/歌词模式，`/v1/music` 或 chat） |
 
@@ -155,6 +156,27 @@ curl http://127.0.0.1:8000/v1/images/generations \
 - 也可以用 `/v1/chat/completions` 调 `yuanbao-image`，返回 4 个 markdown 图片链接。
 - 其他生图模型：`wenxin-image`、`chatglm-image` 无水印；`doubao-image`（Seedream）
   每次 1 张、支持 30 种风格，带“豆包AI生成”水印（网页端无免水印入口）。
+
+### 参考图（图生图）
+
+元宝、豆包、智谱清言的图片生成页支持上传参考图。两种等价入口：
+
+```bash
+# 方式一：/v1/images/generations 带 image 字段（data URL 或 http URL）
+curl http://127.0.0.1:8000/v1/images/generations \
+  -H "Content-Type: application/json" \
+  -d '{"model":"doubao-image","prompt":"把参考图变成纯蓝色，保持构图","n":1,"image":"data:image/png;base64,iVBORw0KGgo..."}'
+
+# 方式二：标准 /v1/images/edits（multipart，兼容 OpenAI SDK client.images.edit）
+curl http://127.0.0.1:8000/v1/images/edits \
+  -F model=doubao-image -F prompt="把参考图变成纯蓝色" -F n=1 -F image[]=@ref.png
+```
+
+- `image` 支持单个字符串或数组，`images` 是数组别名；`/v1/images/edits` 的 `mask` 接受但忽略。
+- 支持矩阵：`doubao-image` / `yuanbao-image` / `chatglm-image` ✅；`wenxin-image` ❌
+  （网页图片生成 composer 无上传入口，传图返回 400）。
+- 每次请求最多 1 张参考图（已端到端标定的上限）；参考图必须是图片，受 `[attach]` 的
+  `max_size_mb` / `download_remote_urls` 约束，`attach.enabled=false` 时全部拒绝。
 
 ## 视频生成
 
@@ -275,7 +297,8 @@ uv run python scripts/manage.py build      # uv build，产物在 dist/
 | 端点 | 说明 |
 |---|---|
 | `POST /v1/chat/completions` | 对话（支持 `stream: true`） |
-| `POST /v1/images/generations` | 生图（元宝 / 文心 / 智谱清言 / 豆包） |
+| `POST /v1/images/generations` | 生图（元宝 / 文心 / 智谱清言 / 豆包），可带参考图 |
+| `POST /v1/images/edits` | 图生图（multipart，元宝 / 豆包 / 智谱清言） |
 | `POST /v1/videos/generations` | 视频生成（豆包 Seedance） |
 | `POST /v1/music/generations` | 音乐生成（文心 / 豆包，曲风/音色/歌词） |
 | `GET /v1/models` | 模型列表（已启用 provider 合并） |

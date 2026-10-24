@@ -237,6 +237,8 @@ class ChatGLMDriver:
             raise NotLoggedInError(f"{self.bm.login.name} shows the login panel")
         await self._rate_limit_check()
         before = (await self.page.evaluate(SNAPSHOT_JS))["qCount"]
+        if attachments:
+            await self._upload_reference_images(attachments)
 
         # Native clicks are swallowed by this page; fill() focuses without
         # clicking, and Enter submits from the focused textarea.
@@ -257,6 +259,32 @@ class ChatGLMDriver:
             if fingerprint and fingerprint in (data["lastQText"] or ""):
                 return
         raise UpstreamPageChangedError("the message was not accepted by the page")
+
+    async def _upload_reference_images(self, attachments: list) -> None:
+        # The AI画图 composer exposes a hidden input[type=file] inside
+        # .ai-draw-upload; each accepted file renders a thumbnail <img> there.
+        for uploaded, att in enumerate(attachments, start=1):
+            inp = self.page.locator(S.DRAW_UPLOAD_INPUT).first
+            try:
+                await inp.set_input_files(str(att.path), timeout=10000)
+            except Exception as exc:  # noqa: BLE001
+                raise UpstreamPageChangedError(
+                    f"failed to upload reference image: {exc}"
+                ) from exc
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                ready = await self.page.evaluate(
+                    """(want) => document.querySelectorAll(
+                        '.ai-draw-upload img[src]').length >= want"""
+                    ,
+                    uploaded,
+                )
+                if ready:
+                    await asyncio.sleep(0.5)
+                    break
+                await asyncio.sleep(0.4)
+            else:
+                raise UpstreamPageChangedError("ChatGLM did not accept the reference image")
 
     async def current_chat_id(self) -> str:
         match = S.CID_RE.search(self.page.url)

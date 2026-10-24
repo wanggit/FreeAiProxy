@@ -52,6 +52,11 @@ MODE_GLM_IMAGE = "GLM Image"
 # Popover shared by the toolbar chips (mode select / watermark switch).
 DRAW_POPOVER = ".draw_options_popover"
 
+# Reference-image upload panel inside the AI画图 composer: a hidden
+# input[type=file] (accept=image/*) whose thumbnails render as <img> inside
+# .ai-draw-upload (verified 2026-10-24).
+DRAW_UPLOAD_INPUT = ".ai-draw-upload input[type=file]"
+
 # Generated image thumbnails: <img class="limitSize"> inside
 # .img-answer-item. Srcs are sfile.chatglm.cn CDN urls; with 去水印 on at
 # generation time the raw jpg (query stripped) is watermark-free

@@ -19,6 +19,7 @@ class ModelSpec:
     ui_mode: str | None = None
     search: bool = False
     agent: str | None = None
+    ref_image: bool = False
 
 
 MODEL_SPECS: tuple[ModelSpec, ...] = (
@@ -60,15 +61,25 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
         kind="image",
         mode="image",
         agent="image",
+        ref_image=True,
     ),
     ModelSpec("yuanbao-ppt", "yuanbao", mode="ppt", agent="ppt"),
     ModelSpec("wenxin-image", "wenxin", kind="image", mode="image", agent="image"),
     ModelSpec("wenxin-writing", "wenxin", mode="writing", agent="writing"),
     ModelSpec("wenxin-music", "wenxin", kind="music", mode="music", agent="music"),
     ModelSpec("chatglm-glm5.3", "chatglm", mode="chat"),
-    ModelSpec("chatglm-image", "chatglm", kind="image", mode="image", agent="image"),
+    ModelSpec(
+        "chatglm-image",
+        "chatglm",
+        kind="image",
+        mode="image",
+        agent="image",
+        ref_image=True,
+    ),
     ModelSpec("doubao-chat", "doubao", mode="chat"),
-    ModelSpec("doubao-image", "doubao", kind="image", mode="image", agent="image"),
+    ModelSpec(
+        "doubao-image", "doubao", kind="image", mode="image", agent="image", ref_image=True
+    ),
     ModelSpec("doubao-video", "doubao", kind="video", mode="video", agent="video"),
     ModelSpec("doubao-music", "doubao", kind="music", mode="music", agent="music"),
 )

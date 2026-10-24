@@ -118,6 +118,7 @@ class ChatService:
         limit: int = 4,
         ratio: str | None = None,
         style: str | None = None,
+        attachments: list | None = None,
     ) -> list[SavedImage]:
         if spec.kind != "image":
             raise UpstreamError(f"model '{spec.id}' does not generate images")
@@ -132,7 +133,9 @@ class ChatService:
             if style is not None:
                 await self.driver.select_image_style(style)
             pre = await self.driver.snapshot()
-            await self.driver.send_user_message(prompt, attachments=[], spec=spec)
+            await self.driver.send_user_message(
+                prompt, attachments=attachments or [], spec=spec
+            )
             urls = await self.driver.wait_images(pre)
             return await self._save_generated_images(urls[:limit])
         finally:

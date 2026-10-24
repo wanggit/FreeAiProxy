@@ -20,6 +20,7 @@ FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web 
 - Browser-bound requests call `bm.ensure_available()` inside the provider queue. It relaunches a closed, crashed or unresponsive browser from the persisted profile; keep the check inside the queue so recovery stays serialized.
 - Conversations are scoped by provider. Auto-match also scopes by mode; an explicit session may switch modes but not providers.
 - Models live in `services/models.py`: `yuanbao-hunyuan` = Hy4 + Expert, `yuanbao-hunyuan-thinking` = Hy3 + Thinking, `yuanbao-hunyuan-instant` = Hy3 + Instant, `yuanbao-hunyuan-search` = Hy3 + Instant + Search, plus `yuanbao-writing`, `yuanbao-image`, `yuanbao-ppt`. Wenxin adds `wenxin-image`, `wenxin-writing` and `wenxin-music`. ChatGLM (智谱清言) adds `chatglm-glm5.3` and `chatglm-image`.
+- Image reference (图生图) support is gated by `ModelSpec.ref_image` (`services/models.py`): true for `doubao-image`, `yuanbao-image`, `chatglm-image`, false for `wenxin-image` (its web composer has no upload entry). `/v1/images/generations` accepts `image`/`images` (data or http URL) and `/v1/images/edits` accepts multipart `image[]`; both reject references for a `ref_image=False` model with 400. The reference flows through `ChatService.generate_images(attachments=...)` into the provider's `send_user_message`.
 - Expert mode has no Search entry in its Add menu. Search is intentionally exposed on Hy3 + Instant; do not try to force it into Expert.
 
 ## Yuanbao invariants
@@ -34,6 +35,7 @@ FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web 
 - The UI is language-sensitive: the browser locale comes from `LoginSpec.locale` (DeepSeek/Yuanbao `en-US`, Wenxin/ChatGLM `zh-CN`) so the site renders the labels each driver's selectors target. Set it per provider, not globally.
 - PPT: wait for the `.pptx` file card, click it to open the workspace, hover the Download icon (`.toolbar-export-format_download...`), choose `PPTX`, and capture the Playwright download. Do not return the web file-card link as the artifact.
 - Attachments: use Add -> Upload Image / Local Files with a trusted file-chooser click; wait for image `alt` or the composer's `with-files` state. Keep original filenames.
+- Reference images in AI Image mode use the composer's own `button[aria-label='Upload Image']` (one click per image, `img[alt=<filename>]` is the success signal), NOT the Add menu. Never press Escape around that upload: Escape exits the AI Image mode back to plain chat and removes the button.
 - All API errors must subclass `GatewayError` (`engine/errors.py`).
 
 ## Wenxin invariants
@@ -43,6 +45,7 @@ FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web 
 - The home (对话) composer is `textarea.ci-textarea`, but every agent mode (图片生成/帮我写作/PPT生成) replaces it with a contenteditable `div.ci-editor`; send via `.ci-submit-button`. Enter also submits but is less reliable, so click the button.
 - The answer is the last `[class*="conversation-flow-answer-container"]`; its text is `.cosd-markdown` (follow-up suggestion chips live outside it). Completion = a new answer container appeared, `.cosd-markdown-loading` is gone and the text is stable.
 - Image: generated `<img>` srcs are on `gips*.baidu.com/it/u=...`; the src carries a `wm=`/`wmo=` watermark. Stripping those params (`_watermark_free`) yields the clean original — download that, do not expose the watermarked URL. Wenxin's composer has no aspect-ratio control, so `select_image_ratio` is a no-op.
+- Reference images: the Wenxin web 图片生成 composer has NO upload entry (`.ci-upload-panel` is an empty shell and there is no `input[type=file]`), so `wenxin-image` sets `ref_image=False` and the gateway rejects reference images for it with a 400. Do not try to force an upload.
 - Music (音乐生成) lives behind the 更多 dropdown, which ignores synthetic clicks: open `.more-dropdown-trigger` with a real mouse click, then click the 音乐生成 capsule. The three directives (选曲风/选音色/AI写歌词) are `.ci-tooltip` triggers whose text becomes the chosen value; options are `.music-directive-button` items. Generation is async in the *same* answer container ("AI音乐创作中" placeholder first, `aCount` never increases): completion = a non-blob `<audio>` src inside `.ai-music-player`, loading icon gone, URL stable. The signed BOS link is named `.mp3` but is actually FLAC — `_save_music` sniffs the magic and stores `.flac`.
 
 ## ChatGLM (智谱清言) invariants
@@ -52,6 +55,7 @@ FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web 
 - Conversations are addressed by the `cid` query param (24-hex), not the path. `conversations.chat_id` stores the cid; draw conversations are prefixed `draw:` so `goto_chat` picks the gdetail agent page.
 - GLM-5.3 is selected via the `.think-mode-trigger` popover and always emits a thinking trace; the reply is `.answer-content-wrap` WITHOUT `text-advance-thinking-content`. Completion = `.enter` lost the `searching` class + text stable.
 - Image: on the AI画图 agent page force mode radio `GLM Image` and the 去水印 toggle on before sending (watermark removal is a generation-time switch; then the `sfile.chatglm.cn` url itself, query stripped, is the clean original). The mode chip's innerText is CSS-truncated ("GLM"), so verify via the popover's `.el-radio.is-checked` instead.
+- Reference images: the AI画图 composer exposes `.ai-draw-upload input[type=file]` (accept `image/*`); `set_input_files` on it works directly and each accepted file renders an `<img>` inside `.ai-draw-upload` (the success signal). Fill the prompt + Enter as usual; the agent treats the uploaded image as the reference.
 
 ## DeepSeek invariants
 
@@ -63,6 +67,7 @@ FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web 
 
 - Selectors/constants live in `engine/doubao_selectors.py`; page JS and interactions in `engine/doubao_driver.py`. Browser locale is `zh-CN`. Calibration details are in `docs/DOUBAO.md`.
 - Skill bar testids: image `skill_bar_button_3`, video `skill_bar_button_17`, music `skill_bar_button_9`, more `skill_bar_button_more`; the composer is replaced per skill. Menus are radix: only take `[role="menu"] [role="menuitem"]` — a role-less wrapper duplicates the same labels.
+- Reference images: the image-skill composer keeps a hidden `input[type=file]` inside `[data-testid="chat_input"]` (`upload-file-input`); `_attach_files` sets it directly and the preview renders as `[data-testid="attachment-image-card"]`. Entering the image skill can pop a radix subscription upsell that intercepts the editor click — dismiss it with Escape and retry.
 - The video skill is a two-turn agent: it answers with a parameter confirmation first, and the driver replies `确认` itself; rendering then starts. The finished clip is NOT a `<video>` element — the bubble holds a cover image in `.block-video` and an empty player shell, so the driver clicks the play icon (`[data-video-conner-tag="true"]`) and captures the MP4 from the player's network response (`v*-vdl.doubao.com`).
 - Doubao music has no `<audio>` element either: playing the finished card calls `POST /alice/media/bigmusic/get_video` and streams a signed MP4 (cover + audio); `wait_music` captures it via `expect_response` and it is stored as `.mp4`.
 - Video generation starts only after the confirm turn, and a 10s Seedance 2.0 Mini clip takes ~8–15 minutes; do not shorten `timeout_completion_s`. Generated images carry the “豆包AI生成” watermark — no watermark-free path exists yet.

@@ -259,7 +259,7 @@ class YuanbaoDriver:
         await self._rate_limit_check()
         before = (await self.page.evaluate(SNAPSHOT_JS))["humanCount"]
         if attachments:
-            await self._upload_attachments(attachments)
+            await self._upload_attachments(attachments, spec)
 
         editor = self.page.locator(S.INPUT_BOX).first
         await editor.click()
@@ -697,17 +697,60 @@ class YuanbaoDriver:
             await asyncio.sleep(0.3)
         raise UpstreamPageChangedError(f"Yuanbao did not enter the expected mode ({text})")
 
-    async def _upload_attachments(self, attachments: list) -> None:
+    async def _upload_attachments(self, attachments: list, spec: ModelSpec | None = None) -> None:
         images = [
             a for a in attachments
             if str(getattr(a, "media_type", "")).startswith("image/")
             or Path(a.path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
         ]
         documents = [a for a in attachments if a not in images]
+        if images and spec is not None and spec.agent == "image":
+            # The AI Image composer replaces the Add menu with a dedicated
+            # Upload Image button; one click uploads one reference image.
+            await self._upload_image_refs(images)
+            return
         if images:
             await self._upload_group("Upload Image", images, wait_for_images=True)
         if documents:
             await self._upload_group("Local Files", documents, wait_for_images=False)
+
+    async def _upload_image_refs(self, images: list) -> None:
+        for att in images:
+            last_error: Exception | None = None
+            for _ in range(2):
+                # No Escape here: on the AI Image composer Escape exits the
+                # image mode back to plain chat, which removes the button.
+                try:
+                    async with self.page.expect_file_chooser(timeout=10000) as chooser_info:
+                        await self._click_aria("Upload Image")
+                    chooser = await chooser_info.value
+                    await chooser.set_files(str(att.path))
+                    last_error = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    await asyncio.sleep(0.5)
+            if last_error is not None:
+                with contextlib.suppress(Exception):
+                    await self.page.screenshot(path="data/yb_upload_fail.png")
+                raise UpstreamPageChangedError(
+                    f"failed to upload reference image: {last_error}"
+                ) from last_error
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                ready = await self.page.evaluate(
+                    """(name) => Array.from(document.querySelectorAll('img')).some(img =>
+                        img.alt === name && img.getBoundingClientRect().width > 0)""",
+                    att.filename,
+                )
+                if ready:
+                    await asyncio.sleep(0.4)
+                    break
+                await asyncio.sleep(0.4)
+            else:
+                raise UpstreamPageChangedError(
+                    "Yuanbao did not accept the reference image"
+                )
 
     async def _upload_group(
         self, menu_item: str, attachments: list, wait_for_images: bool

@@ -241,7 +241,14 @@ class DoubaoDriver:
             editor = self.page.locator(S.EDITOR).first
             if not await editor.count():
                 raise UpstreamPageChangedError("the Doubao composer is not available")
-            await editor.click()
+            try:
+                await editor.click(timeout=5000)
+            except Exception:  # noqa: BLE001
+                # A promo popover (e.g. the subscription upsell that appears
+                # when entering the image skill) can intercept the click.
+                await self.page.keyboard.press("Escape")
+                await asyncio.sleep(0.5)
+                await editor.click(timeout=10000)
             await self.page.keyboard.press("Control+A")
             await self.page.keyboard.press("Backspace")
             if text:

@@ -131,6 +131,19 @@ class AttachmentStore:
             origin="inline",
         )
 
+    def add_bytes(self, filename: str, raw: bytes) -> Attachment:
+        name = _safe_filename(filename)
+        self._validate(name, len(raw))
+        path = self._target_path(name)
+        path.write_bytes(raw)
+        return Attachment(
+            path=path,
+            filename=name,
+            media_type=_guess_media_type(name),
+            size=len(raw),
+            origin="file",
+        )
+
     def add_data_url(self, url: str) -> Attachment:
         match = _DATA_URL_RE.match(url.strip())
         if not match:

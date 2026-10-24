@@ -48,6 +48,7 @@ Authorization: Bearer sk-xxx
 
 - `POST /v1/chat/completions`
 - `POST /v1/images/generations`
+- `POST /v1/images/edits`
 - `POST /v1/music/generations`
 - `GET /v1/models`
 - `GET /admin/status`
@@ -419,6 +420,8 @@ Content-Type: application/json
 | `size` | string | null | 宽高比（仅元宝支持）：`1:1` / `4:3` / `3:4` / `16:9` / `9:16`；`auto` 或不传为 Smart Ratio |
 | `quality` | string | null | 接受但忽略 |
 | `style` | string | null | 接受但忽略 |
+| `image` | string \| string[] | null | 参考图（data URL 或 http(s) URL），见 [5.7 参考图](#57-参考图图生图) |
+| `images` | string[] | null | `image` 的数组别名，两者会合并 |
 
 ### 5.3 URL 响应
 
@@ -464,6 +467,67 @@ print(resp.data[0].url)
 - 图片生成约 15–30 秒，不含队列等待。
 - 生成文件不会自动清理。
 - 文件下载接口不需要 API Key，但文件名是随机 32 位 hex，不可枚举。
+
+### 5.7 参考图（图生图）
+
+除纯文生图外，元宝、豆包、智谱清言的图片生成页支持上传参考图（图生图）。
+网关提供两种等价入口：
+
+**方式一：`/v1/images/generations` 携带 `image` 字段**
+
+```json
+{
+  "model": "doubao-image",
+  "prompt": "把参考图变成纯蓝色，保持构图",
+  "n": 1,
+  "image": "data:image/png;base64,iVBORw0KGgo..."
+}
+```
+
+`image` 可以是单个字符串或字符串数组，值支持 `data:` URL 或 `http(s)` URL
+（远程下载受 `attach.download_remote_urls` 控制）。`images` 是数组别名，两者会合并。
+
+**方式二：标准 `/v1/images/edits`（multipart，兼容 OpenAI SDK `client.images.edit`）**
+
+```http
+POST /v1/images/edits
+Content-Type: multipart/form-data
+
+model=doubao-image
+prompt=把参考图变成纯绿色
+n=1
+image[]=@ref.png
+```
+
+字段与 `generations` 一致（`model` / `prompt` / `n` / `size` / `style` /
+`response_format`），参考图通过 `image` 或 `image[]` 文件字段上传；`mask`
+接受但忽略（网页端无遮罩入口）。
+
+```python
+with open("ref.png", "rb") as f:
+    resp = client.images.edit(
+        model="doubao-image",
+        image=f,
+        prompt="把参考图变成纯蓝色，保持构图",
+        n=1,
+    )
+print(resp.data[0].url)
+```
+
+**支持矩阵与限制**
+
+| 模型 | 参考图 | 说明 |
+|---|---|---|
+| `doubao-image` | ✅ | 网页图像生成技能内置 `upload-file-input`，直接注入文件 |
+| `yuanbao-image` | ✅ | AI Image 模式 composer 的 `Upload Image` 按钮（Escape 会退出该模式，故上传路径不能按 Escape） |
+| `chatglm-image` | ✅ | AI画图 composer 的 `.ai-draw-upload input[type=file]`，缩略图渲染在 `.ai-draw-upload` 内 |
+| `wenxin-image` | ❌ | 网页图片生成 composer 无参考图上传入口（`ci-upload-panel` 为空壳），传图返回 400 |
+
+- 每次请求最多 **1 张**参考图（已端到端标定的上限；网页本身可接受更多，但网关目前只校准了单图）。
+- 参考图必须是图片（`image/*`，扩展名 `.png/.jpg/.jpeg/.webp/.gif/.bmp`），受 `[attach]` 的
+  `max_size_mb`、`download_remote_urls` 等约束；`attach.enabled = false` 时拒绝所有参考图。
+- 上传的参考图仅用于触发网页的图生图，落盘到临时目录，请求结束即清理，不写入 `data/generated/`。
+- 实测（2026-10-24）：传入纯红参考图 + “变成纯蓝色”指令，三家返回结果主色均为蓝色，确认参考图生效。
 
 ---
 

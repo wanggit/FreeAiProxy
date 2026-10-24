@@ -12,3 +12,4 @@ data/
 config.toml
 poc/dump/
 .qoder/
+.DS_Store

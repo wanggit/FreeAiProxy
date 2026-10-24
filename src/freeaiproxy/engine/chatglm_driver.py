@@ -311,6 +311,16 @@ class ChatGLMDriver:
         # are not calibrated yet; requested sizes are accepted and ignored.
         return None
 
+    async def select_image_style(self, style: str) -> None:
+        # The ChatGLM draw page exposes no style control.
+        return None
+
+    async def select_video_options(
+        self, ratio: str | None = None, duration: int | None = None
+    ) -> None:
+        # ChatGLM has no video skill.
+        return None
+
     async def wait_images(self, pre: ChatGLMPreState) -> list[str]:
         poll = max(self.settings.worker.poll_interval_ms / 1000.0, 0.5)
         deadline = time.monotonic() + self.settings.worker.timeout_completion_s

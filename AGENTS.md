@@ -59,6 +59,14 @@ FreeAiProxy wraps DeepSeek, Tencent Yuanbao, Baidu Wenxin and Zhipu ChatGLM web 
 - Completion uses the two signals plus a long stability fallback; DeepThink is aligned explicitly per turn.
 - Streaming is synthesized from DOM polling; on client disconnect the worker must still drain and persist the reply.
 
+## Doubao (豆包) invariants
+
+- Selectors/constants live in `engine/doubao_selectors.py`; page JS and interactions in `engine/doubao_driver.py`. Browser locale is `zh-CN`. Calibration details are in `docs/DOUBAO.md`.
+- Skill bar testids: image `skill_bar_button_3`, video `skill_bar_button_17`, music `skill_bar_button_9`, more `skill_bar_button_more`; the composer is replaced per skill. Menus are radix: only take `[role="menu"] [role="menuitem"]` — a role-less wrapper duplicates the same labels.
+- The video skill is a two-turn agent: it answers with a parameter confirmation first, and the driver replies `确认` itself; rendering then starts. The finished clip is NOT a `<video>` element — the bubble holds a cover image in `.block-video` and an empty player shell, so the driver clicks the play icon (`[data-video-conner-tag="true"]`) and captures the MP4 from the player's network response (`v*-vdl.doubao.com`).
+- Doubao music has no `<audio>` element either: playing the finished card calls `POST /alice/media/bigmusic/get_video` and streams a signed MP4 (cover + audio); `wait_music` captures it via `expect_response` and it is stored as `.mp4`.
+- Video generation starts only after the confirm turn, and a 10s Seedance 2.0 Mini clip takes ~8–15 minutes; do not shorten `timeout_completion_s`. Generated images carry the “豆包AI生成” watermark — no watermark-free path exists yet.
+
 ## Local state and gotchas
 
 - `data/` is entirely gitignored. `data/profile` and `data/profiles/*` (yuanbao, wenxin, chatglm) **are** the login states: never delete, reset, or commit them. `data/generated/` holds downloaded images, PPTX and audio (`.flac`) files.

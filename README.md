@@ -62,6 +62,10 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 | `wenxin-music` | 文心 | 音乐生成（曲风/音色/歌词，`/v1/music` 或 chat） |
 | `chatglm-glm5.3` | 智谱清言 | GLM-5.3 深度思考 |
 | `chatglm-image` | 智谱清言 | AI画图 GLM Image 模式（无水印，`/v1/images` 或 chat） |
+| `doubao-chat` | 豆包 | 普通对话 |
+| `doubao-image` | 豆包 | Seedream 图像生成（模型/比例/风格，`/v1/images` 或 chat） |
+| `doubao-video` | 豆包 | Seedance 视频生成（模型/比例/时长，`/v1/videos`） |
+| `doubao-music` | 豆包 | 音乐生成（曲风/情绪/音色/歌词模式，`/v1/music` 或 chat） |
 
 说明：
 
@@ -204,7 +208,7 @@ client.chat.completions.create(
 
 不带会话 ID 时，网关会按**用户轮次**在同一 provider + mode 内自动匹配已有会话。
 显式传入的 `session_id` 必须属于同一 provider；同一 provider 内可以切换模型/模式。
-完整 diff 规则见 [docs/API.md](docs/API.md#9-会话机制)。
+完整 diff 规则见 [docs/API.md](docs/API.md#11-会话机制)。
 
 ## 命令
 

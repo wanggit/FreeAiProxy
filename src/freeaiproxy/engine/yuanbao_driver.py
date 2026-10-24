@@ -623,6 +623,16 @@ class YuanbaoDriver:
         if target not in (await button.inner_text()).strip():
             raise UpstreamPageChangedError(f"Yuanbao did not switch the image ratio to '{target}'")
 
+    async def select_image_style(self, style: str) -> None:
+        # Yuanbao's AI Image exposes no style control.
+        return None
+
+    async def select_video_options(
+        self, ratio: str | None = None, duration: int | None = None
+    ) -> None:
+        # Yuanbao has no video skill.
+        return None
+
     async def _enter_ppt(self) -> None:
         if await self._placeholder_contains(S.PLACEHOLDER_PPT):
             return

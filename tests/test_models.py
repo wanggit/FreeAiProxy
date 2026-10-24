@@ -24,6 +24,10 @@ EXPECTED = {
     "wenxin-music",
     "chatglm-glm5.3",
     "chatglm-image",
+    "doubao-chat",
+    "doubao-image",
+    "doubao-video",
+    "doubao-music",
 }
 
 
@@ -74,6 +78,21 @@ def test_chatglm_specs():
     assert image.provider == "chatglm"
     assert image.kind == "image"
     assert image.agent == "image"
+
+
+def test_doubao_specs():
+    chat = get_model_spec("doubao-chat")
+    assert chat.provider == "doubao"
+    assert chat.kind == "chat"
+    image = get_model_spec("doubao-image")
+    assert image.kind == "image"
+    assert image.agent == "image"
+    video = get_model_spec("doubao-video")
+    assert video.kind == "video"
+    assert video.agent == "video"
+    music = get_model_spec("doubao-music")
+    assert music.kind == "music"
+    assert music.agent == "music"
 
 
 def test_validate_model_returns_id():

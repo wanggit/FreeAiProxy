@@ -6,6 +6,7 @@ import time
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 
+from freeaiproxy.engine import doubao_selectors as DB
 from freeaiproxy.engine import yuanbao_selectors as YB
 from freeaiproxy.engine.errors import InvalidRequestError, QueueFullError
 from freeaiproxy.services.chat_service import ChatService
@@ -29,6 +30,14 @@ def _normalize_ratio(size: str | None, provider: str) -> str | None:
         raise InvalidRequestError(
             "size must be one of the supported aspect ratios "
             f"({', '.join(YB.IMAGE_RATIOS)}) or 'auto'"
+        )
+    if provider == "doubao":
+        for ratio in DB.IMAGE_RATIOS:
+            if value.lower() == ratio.lower():
+                return ratio
+        raise InvalidRequestError(
+            "size must be one of the supported aspect ratios "
+            f"({', '.join(DB.IMAGE_RATIOS)}) or 'auto'"
         )
     # Other providers (e.g. wenxin) have their own ratio vocabulary that is
     # resolved by the driver during calibration; pass the value through.
@@ -58,6 +67,17 @@ async def create_image(req: _ImageRequest, request: Request):
     if spec.kind != "image":
         raise InvalidRequestError(f"model '{spec.id}' does not generate images")
     ratio = _normalize_ratio(req.size, spec.provider)
+    style = req.style
+    if spec.provider == "doubao" and style is not None and style.strip():
+        style = style.strip()
+        for name in DB.IMAGE_STYLES:
+            if style.lower() == name.lower():
+                style = name
+                break
+        else:
+            raise InvalidRequestError(
+                "style must be one of: " + ", ".join(DB.IMAGE_STYLES)
+            )
     svc: ChatService | None = request.app.state.services.get(spec.provider)
     if svc is None:
         raise InvalidRequestError(f"provider '{spec.provider}' is disabled")
@@ -67,7 +87,9 @@ async def create_image(req: _ImageRequest, request: Request):
             f"/{svc.settings.worker.max_queue_len})"
         )
 
-    images = await svc.generate_images(req.prompt, spec, limit=req.n, ratio=ratio)
+    images = await svc.generate_images(
+        req.prompt, spec, limit=req.n, ratio=ratio, style=style
+    )
     base = str(request.base_url).rstrip("/")
     data = []
     for image in images:

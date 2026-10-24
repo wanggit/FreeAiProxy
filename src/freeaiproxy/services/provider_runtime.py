@@ -6,6 +6,7 @@ from typing import Any
 from freeaiproxy.config import Settings, provider_profile_path
 from freeaiproxy.db import Database
 from freeaiproxy.engine import chatglm_selectors as CG
+from freeaiproxy.engine import doubao_selectors as DB
 from freeaiproxy.engine import selectors as DS
 from freeaiproxy.engine import wenxin_selectors as WX
 from freeaiproxy.engine import yuanbao_selectors as YB
@@ -61,6 +62,16 @@ def login_spec(settings: Settings, name: str) -> LoginSpec:
             logged_in_selectors=CG.LOGGED_IN_SELECTORS,
             locale="zh-CN",
         )
+    if name == "doubao":
+        return LoginSpec(
+            name="doubao",
+            startup_url=DB.BASE_URL,
+            profile_path=profile_path,
+            login_hints=DB.LOGIN_HINTS,
+            login_surfaces=(DB.LOGIN_BUTTON,),
+            logged_in_selectors=tuple(DB.LOGGED_IN_SELECTORS),
+            locale="zh-CN",
+        )
     raise ValueError(f"unknown provider '{name}'")
 
 
@@ -85,6 +96,10 @@ def make_driver(settings: Settings, name: str, bm: BrowserManager) -> Any:
         from freeaiproxy.engine.chatglm_driver import ChatGLMDriver
 
         return ChatGLMDriver(bm, settings)
+    if name == "doubao":
+        from freeaiproxy.engine.doubao_driver import DoubaoDriver
+
+        return DoubaoDriver(bm, settings)
     raise ValueError(f"unknown provider '{name}'")
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from freeaiproxy.api.v1_images import _normalize_ratio
+from freeaiproxy.engine import doubao_selectors as DB
 from freeaiproxy.engine import yuanbao_selectors as YB
 from freeaiproxy.engine.errors import InvalidRequestError
 
@@ -30,3 +31,14 @@ def test_unsupported_size_rejected_for_yuanbao(size: str) -> None:
 @pytest.mark.parametrize("size", ["1:1", "21:9", "anything"])
 def test_other_providers_pass_ratio_through(size: str) -> None:
     assert _normalize_ratio(size, "wenxin") == size
+
+
+@pytest.mark.parametrize("ratio", DB.IMAGE_RATIOS)
+def test_doubao_ratios_pass_through(ratio: str) -> None:
+    assert _normalize_ratio(ratio, "doubao") == ratio
+
+
+def test_doubao_auto_and_unknown_rejected() -> None:
+    assert _normalize_ratio("auto", "doubao") is None
+    with pytest.raises(InvalidRequestError):
+        _normalize_ratio("1024x1024", "doubao")

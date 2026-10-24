@@ -101,6 +101,8 @@ class ChatService:
                 content = await self._execute_image(res, spec)
             elif spec.kind == "music":
                 content = await self._execute_music(res, spec)
+            elif spec.kind == "video":
+                content = await self._execute_video(res, spec)
             elif spec.agent == "ppt":
                 content = await self._execute_ppt(res, spec)
             else:
@@ -110,7 +112,12 @@ class ChatService:
             self.queue.release()
 
     async def generate_images(
-        self, prompt: str, spec: ModelSpec, limit: int = 4, ratio: str | None = None
+        self,
+        prompt: str,
+        spec: ModelSpec,
+        limit: int = 4,
+        ratio: str | None = None,
+        style: str | None = None,
     ) -> list[SavedImage]:
         if spec.kind != "image":
             raise UpstreamError(f"model '{spec.id}' does not generate images")
@@ -122,10 +129,37 @@ class ChatService:
             await self.driver.goto_new_chat()
             await self.driver.prepare(spec)
             await self.driver.select_image_ratio(ratio)
+            if style is not None:
+                await self.driver.select_image_style(style)
             pre = await self.driver.snapshot()
             await self.driver.send_user_message(prompt, attachments=[], spec=spec)
             urls = await self.driver.wait_images(pre)
             return await self._save_generated_images(urls[:limit])
+        finally:
+            self.queue.release()
+
+    async def generate_video(
+        self,
+        prompt: str,
+        spec: ModelSpec,
+        limit: int = 1,
+        ratio: str | None = None,
+        duration: int | None = None,
+    ) -> SavedImage:
+        if spec.kind != "video":
+            raise UpstreamError(f"model '{spec.id}' does not generate videos")
+        waited_ms = await self.queue.acquire()
+        if waited_ms > 1000:
+            logger.info("video request waited %dms in the queue", waited_ms)
+        try:
+            await self.bm.ensure_available()
+            await self.driver.goto_new_chat()
+            await self.driver.prepare(spec)
+            await self.driver.select_video_options(ratio=ratio, duration=duration)
+            pre = await self.driver.snapshot()
+            await self.driver.send_user_message(prompt, attachments=[], spec=spec)
+            urls = await self.driver.wait_videos(pre)
+            return await self._save_video(urls[0])
         finally:
             self.queue.release()
 
@@ -136,6 +170,7 @@ class ChatService:
         *,
         style: str | None = None,
         voice: str | None = None,
+        mood: str | None = None,
         lyrics: str | None = None,
     ) -> SavedImage:
         if spec.kind != "music":
@@ -148,7 +183,7 @@ class ChatService:
             await self.driver.goto_new_chat()
             await self.driver.prepare(spec)
             await self.driver.select_music_options(
-                style=style, voice=voice, custom_lyrics=bool(lyrics)
+                style=style, voice=voice, mood=mood, custom_lyrics=bool(lyrics)
             )
             pre = await self.driver.snapshot()
             await self.driver.send_user_message(
@@ -213,6 +248,14 @@ class ChatService:
         await self._finalize(res, content, spec)
         return content
 
+    async def _execute_video(self, res: Resolution, spec: ModelSpec) -> str:
+        pre = await self._navigate_and_send(res, spec)
+        urls = await self.driver.wait_videos(pre)
+        clip = await self._save_video(urls[0])
+        content = f"[generated video]({file_url(self.settings, clip.name)})"
+        await self._finalize(res, content, spec)
+        return content
+
     async def _execute_ppt(self, res: Resolution, spec: ModelSpec) -> str:
         pre = await self._navigate_and_send(res, spec)
         summary = await self.driver.wait_completion(pre)
@@ -271,12 +314,35 @@ class ChatService:
             raise UpstreamError(f"failed to download generated music: {exc}") from exc
         ctype = resp.headers.get("content-type", "").lower()
         body = resp.content
-        if body[:4] == b"fLaC" or "flac" in ctype:
+        if body[4:8] == b"ftyp" or "mp4" in ctype:
+            # Doubao muxes the track into an MP4 (cover art + audio) and serves
+            # it from get_video, so the container is already correct.
+            ext = ".mp4"
+        elif body[:4] == b"fLaC" or "flac" in ctype:
             ext = ".flac"
         elif body[:4] == b"RIFF" or "wav" in ctype:
             ext = ".wav"
         else:
             ext = ".mp3"
+        path = new_artifact_path(ext)
+        path.write_bytes(body)
+        return SavedImage(name=path.name, path=path)
+
+    async def _save_video(self, url: str) -> SavedImage:
+        try:
+            async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise UpstreamError(f"failed to download generated video: {exc}") from exc
+        ctype = resp.headers.get("content-type", "").lower()
+        body = resp.content
+        if body[4:8] == b"ftyp" or "mp4" in ctype:
+            ext = ".mp4"
+        elif "webm" in ctype:
+            ext = ".webm"
+        else:
+            ext = ".mp4"
         path = new_artifact_path(ext)
         path.write_bytes(body)
         return SavedImage(name=path.name, path=path)
@@ -309,6 +375,10 @@ class ChatService:
                 return
             if spec.kind == "music":
                 async for chunk in self._stream_music(res, spec):
+                    yield chunk
+                return
+            if spec.kind == "video":
+                async for chunk in self._stream_video(res, spec):
                     yield chunk
                 return
             if spec.agent == "ppt":
@@ -368,6 +438,23 @@ class ChatService:
                 clip = await self._save_music(urls[0])
                 await self._finalize(
                     res, f"[generated music]({file_url(self.settings, clip.name)})", spec
+                )
+            raise
+
+    async def _stream_video(self, res: Resolution, spec: ModelSpec) -> AsyncIterator[str]:
+        pre = await self._navigate_and_send(res, spec)
+        try:
+            urls = await self.driver.wait_videos(pre)
+            clip = await self._save_video(urls[0])
+            content = f"[generated video]({file_url(self.settings, clip.name)})"
+            await self._finalize(res, content, spec)
+            yield content
+        except (asyncio.CancelledError, GeneratorExit):
+            with suppress(Exception):
+                urls = await self.driver.wait_videos(pre)
+                clip = await self._save_video(urls[0])
+                await self._finalize(
+                    res, f"[generated video]({file_url(self.settings, clip.name)})", spec
                 )
             raise
 

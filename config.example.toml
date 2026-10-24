@@ -46,3 +46,10 @@ max_size_mb = 20
 max_files = 5
 download_remote_urls = true
 remote_timeout_s = 30
+
+# 豆包（doubao.com/chat/）：对话 / 图像生成（Seedream，比例+风格+模型）/
+# 视频生成（Seedance，比例+时长）/ 音乐生成（曲风+情绪+音色+歌词模式）。
+# 首次启用需在有头浏览器里登录一次（freeaiproxy relogin --provider doubao）。
+[providers.doubao]
+enabled = false
+profile = "data/profiles/doubao"

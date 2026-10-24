@@ -286,6 +286,16 @@ class WenxinDriver:
         # 2026-10-23), so a requested size is accepted and ignored.
         return None
 
+    async def select_image_style(self, style: str) -> None:
+        # Wenxin's 图片生成 composer exposes no style control.
+        return None
+
+    async def select_video_options(
+        self, ratio: str | None = None, duration: int | None = None
+    ) -> None:
+        # Wenxin has no video skill.
+        return None
+
     async def wait_images(self, pre: WenxinPreState) -> list[str]:
         poll = max(self.settings.worker.poll_interval_ms / 1000.0, 0.5)
         deadline = time.monotonic() + self.settings.worker.timeout_completion_s
@@ -344,7 +354,9 @@ class WenxinDriver:
         style: str | None = None,
         voice: str | None = None,
         custom_lyrics: bool = False,
+        mood: str | None = None,
     ) -> None:
+        # Wenxin's 音乐生成 has no 情绪 directive (mood is a Doubao control).
         if custom_lyrics:
             await self._pick_directive(S.MUSIC_LYRICS_TRIGGER, S.MUSIC_LYRICS_CUSTOM)
         if style:

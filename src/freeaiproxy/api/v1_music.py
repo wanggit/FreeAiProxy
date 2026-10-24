@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 
+from freeaiproxy.engine import doubao_selectors as DB
 from freeaiproxy.engine import wenxin_selectors as WX
 from freeaiproxy.engine.errors import InvalidRequestError, QueueFullError
 from freeaiproxy.services.chat_service import ChatService
@@ -30,6 +31,7 @@ class _MusicRequest(BaseModel):
     prompt: str
     style: str | None = None
     voice: str | None = None
+    mood: str | None = None
     lyrics: str | None = None
     model_config = ConfigDict(extra="ignore")
 
@@ -41,8 +43,16 @@ async def create_music(req: _MusicRequest, request: Request):
     spec = get_model_spec(req.model)
     if spec.kind != "music":
         raise InvalidRequestError(f"model '{spec.id}' does not generate music")
-    style = _normalize_choice(req.style, WX.MUSIC_STYLES, "style")
-    voice = _normalize_choice(req.voice, WX.MUSIC_VOICES, "voice")
+    styles: tuple[str, ...]
+    voices: tuple[str, ...]
+    moods: tuple[str, ...]
+    if spec.provider == "doubao":
+        styles, voices, moods = DB.MUSIC_GENRES, DB.MUSIC_VOICES, DB.MUSIC_MOODS
+    else:
+        styles, voices, moods = WX.MUSIC_STYLES, WX.MUSIC_VOICES, ()
+    style = _normalize_choice(req.style, styles, "style")
+    voice = _normalize_choice(req.voice, voices, "voice")
+    mood = _normalize_choice(req.mood, moods, "mood")
     svc: ChatService | None = request.app.state.services.get(spec.provider)
     if svc is None:
         raise InvalidRequestError(f"provider '{spec.provider}' is disabled")
@@ -53,7 +63,12 @@ async def create_music(req: _MusicRequest, request: Request):
         )
 
     clip = await svc.generate_music(
-        req.prompt, spec, style=style, voice=voice, lyrics=(req.lyrics or "").strip() or None
+        req.prompt,
+        spec,
+        style=style,
+        voice=voice,
+        mood=mood,
+        lyrics=(req.lyrics or "").strip() or None,
     )
     base = str(request.base_url).rstrip("/")
     return {"created": int(time.time()), "data": [{"url": f"{base}/v1/files/{clip.name}"}]}

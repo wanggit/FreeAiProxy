@@ -18,6 +18,7 @@ from freeaiproxy.api.v1_chat import router as chat_router
 from freeaiproxy.api.v1_images import router as images_router
 from freeaiproxy.api.v1_models import router as models_router
 from freeaiproxy.api.v1_music import router as music_router
+from freeaiproxy.api.v1_videos import router as videos_router
 from freeaiproxy.config import Settings, enabled_provider_names, load_settings
 from freeaiproxy.db import Database
 from freeaiproxy.engine.errors import GatewayError
@@ -84,6 +85,7 @@ def create_app(config_path: Path | None = None, settings: Settings | None = None
     app.include_router(models_router, dependencies=[Depends(require_api_key)])
     app.include_router(images_router, dependencies=[Depends(require_api_key)])
     app.include_router(music_router, dependencies=[Depends(require_api_key)])
+    app.include_router(videos_router, dependencies=[Depends(require_api_key)])
     app.include_router(files_router)
     app.include_router(admin_router)
 

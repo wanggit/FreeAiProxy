@@ -18,17 +18,18 @@ FreeAiProxy 把 DeepSeek 与腾讯元宝网页版包装成 OpenAI 兼容 API。�
 3. [模型](#3-模型)
 4. [Chat Completions](#4-chat-completions)
 5. [Images](#5-images)
-6. [Music](#6-music)
-7. [生成文件](#7-生成文件)
-8. [模型列表](#8-模型列表)
-9. [健康检查与管理接口](#9-健康检查与管理接口)
-10. [会话机制](#10-会话机制)
-11. [附件与多模态](#11-附件与多模态)
-12. [流式响应](#12-流式响应)
-13. [错误格式](#13-错误格式)
-14. [并发与队列](#14-并发与队列)
-15. [配置项](#15-配置项)
-16. [兼容性与限制](#16-兼容性与限制)
+6. [Videos](#6-videos)
+7. [Music](#7-music)
+8. [生成文件](#8-生成文件)
+9. [模型列表](#9-模型列表)
+10. [健康检查与管理接口](#10-健康检查与管理接口)
+11. [会话机制](#11-会话机制)
+12. [附件与多模态](#12-附件与多模态)
+13. [流式响应](#13-流式响应)
+14. [错误格式](#14-错误格式)
+15. [并发与队列](#15-并发与队列)
+16. [配置项](#16-配置项)
+17. [兼容性与限制](#17-兼容性与限制)
 
 ---
 
@@ -58,7 +59,7 @@ Authorization: Bearer sk-xxx
 - `GET /v1/files/{name}`（随机文件名的生成文件）
 - `GET /`
 
-鉴权失败返回 HTTP 401，错误类型见[错误格式](#13-错误格式)。
+鉴权失败返回 HTTP 401，错误类型见[错误格式](#14-错误格式)。
 
 ---
 
@@ -133,6 +134,10 @@ resp = client.chat.completions.create(
 | `wenxin-music` | 文心 | 音乐生成（曲风/音色/歌词） | music（也支持 chat） |
 | `chatglm-glm5.3` | 智谱清言 | GLM-5.3 深度思考 | chat |
 | `chatglm-image` | 智谱清言 | AI画图（GLM Image） | image（也支持 chat） |
+| `doubao-chat` | 豆包 | 普通对话 | chat |
+| `doubao-image` | 豆包 | 图像生成（Seedream，比例/风格/模型） | image（也支持 chat） |
+| `doubao-video` | 豆包 | 视频生成（Seedance，比例/时长） | video |
+| `doubao-music` | 豆包 | 音乐生成（曲风/情绪/音色/歌词模式） | music（也支持 chat） |
 
 ### 3.1 模型行为说明
 
@@ -147,6 +152,13 @@ resp = client.chat.completions.create(
 - **PPT**：`yuanbao-ppt` 返回摘要 + 本地 `.pptx` 链接；生成可能耗时数分钟。
 - **Music**：`wenxin-music` 返回本地音频链接（实测为 FLAC）；网页端生成约 2–3 分钟。
   曲风 / 音色 / 歌词三个选项仅 Music 接口支持，Chat 接口按网页默认值生成。
+- **Doubao 图像**：`doubao-image` 一次生成 1 张图；`size` 为比例（`1:1`/`16:9`/`9:16`/
+  `4:3`/`3:4`/`3:2`/`2:3`，默认 `auto`），`style` 支持 30 种风格（见 DOUBAO.md）。
+  返回的图片带有“豆包AI生成”水印——网页端没有免水印下载入口，这是已知限制。
+- **Doubao 视频**：`doubao-video` 走 `POST /v1/videos/generations`；网页端是两轮
+  代理流程（先出参数确认，网关自动回“确认”后才开始渲染），单次 1 条，可能耗时数分钟。
+- **Doubao 音乐**：`doubao-music` 额外支持 `mood`（情绪）；产出实际是封面+音轨的
+  MP4（网页播放器调用 `get_video` 取流），按内容魔数落盘为 `.mp4`。
 
 每个请求都会显式对齐网页上的模型/模式，因此可以在同一会话中切换模型。
 
@@ -225,7 +237,7 @@ Content-Type: application/json
 | `input_audio` | 当前不支持，内容被忽略 |
 | 其他 | 返回 400 |
 
-附件细节见[附件与多模态](#11-附件与多模态)。
+附件细节见[附件与多模态](#12-附件与多模态)。
 
 ### 4.5 非流式响应
 
@@ -455,27 +467,71 @@ print(resp.data[0].url)
 
 ---
 
-## 6. Music
+## 6. Videos
 
 ### 6.1 Endpoint
 
 ```http
-POST /v1/music/generations
+POST /v1/videos/generations
 ```
 
 ### 6.2 请求体
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `model` | string | `wenxin-music` | 目前仅支持 `wenxin-music` |
+| `model` | string | `doubao-video` | `doubao-video`（目前仅豆包支持） |
+| `prompt` | string | 必填 | 视频画面描述 |
+| `n` | int | 1 | 1–4；网页端单次实际只生成 1 条 |
+| `size` | string | 网页默认 | 宽高比：`auto` / `3:4` / `4:3` / `9:16` / `16:9` / `1:1` / `21:9` |
+| `duration` | int | 网页默认 | 秒数 4–15（等价字段 `seconds`） |
+| `response_format` | string | `url` | `url` 或 `b64_json` |
+
+非法 `size` / `duration` 返回 `invalid_request_error`。
+
+### 6.3 响应
+
+```json
+{
+  "created": 1792769601,
+  "data": [{"url": "http://127.0.0.1:8000/v1/files/53c1f509….mp4"}]
+}
+```
+
+### 6.4 行为与限制
+
+- 走网页端两轮代理流程：先出参数确认文案，网关自动回「确认」后才开始渲染。
+- 实测 Seedance 2.0 Mini 10s 约 8–15 分钟，接口同步等待（占用该 provider 队列，
+  `timeout_completion_s` 需足够大）。
+- 产出 MP4（带签名 URL，网关拿到后立即下载并按内容魔数落盘），通过
+  `/v1/files/<name>.mp4` 下载。
+- 视频可能带动态水印（网页端无免水印下载入口），这是已知限制。
+
+---
+
+## 7. Music
+
+### 7.1 Endpoint
+
+```http
+POST /v1/music/generations
+```
+
+### 7.2 请求体
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `model` | string | `wenxin-music` | `wenxin-music` 或 `doubao-music` |
 | `prompt` | string | 必填* | 音乐主题描述（*与 `lyrics` 至少给一个） |
 | `style` | string | 网页默认 | 曲风：`默认` / `摇滚` / `电子` / `R&B` / `嘻哈` / `金属` / `蓝调` / `流行` / `民谣` / `爵士` / `说唱` / `拉丁` / `朋克` |
 | `voice` | string | 智能匹配 | 音色：`智能匹配` / `深情男声` / `甜美女声` |
+| `mood` | string | 网页默认 | 情绪（仅 `doubao-music`）：`快乐` / `放松` / `活力` / `兴奋` / `忧郁` / `鼓舞` / `伤感` / `怀旧` / `浪漫` |
 | `lyrics` | string | 无 | 提供后自动切到「自定义歌词」并以此作为歌词；否则用「AI写歌词」按 `prompt` 生成 |
 
 非法 `style` / `voice` 返回 `invalid_request_error`。
+`doubao-music` 的 `style` 词表为：`流行` / `嘻哈` / `国风` / `DJ` / `摇滚` / `民谣` /
+`R&B` / `雷鬼` / `朋克` / `电音` / `爵士`；`voice` 为 `男声` / `女声`。
 
-### 6.3 响应
+### 7.3 响应
 
 ```json
 {
@@ -484,7 +540,7 @@ POST /v1/music/generations
 }
 ```
 
-### 6.4 行为与限制
+### 7.4 行为与限制
 
 - 每次生成 1 首；网页端约 2–3 分钟，接口同步等待（占用该 provider 队列）。
 - 实测音频为 FLAC 编码（对象名虽为 `.mp3`），网关按内容魔数落盘为 `.flac`。
@@ -492,16 +548,16 @@ POST /v1/music/generations
 
 ---
 
-## 7. 生成文件
+## 8. 生成文件
 
 ```http
 GET /v1/files/{name}
 ```
 
-用途：下载 `data/generated/` 中的生图或 PPTX。
+用途：下载 `data/generated/` 中的生图、PPTX、音乐或视频。
 
 - 文件名格式：32 位小写 hex + 扩展名。
-- 允许扩展名：`.png`、`.webp`、`.jpg`、`.pptx`、`.mp3`、`.wav`、`.flac`。
+- 允许扩展名：`.png`、`.webp`、`.jpg`、`.pptx`、`.mp3`、`.wav`、`.flac`、`.mp4`、`.webm`。
 - 不存在或名字非法返回 404。
 - 图片以 `Cache-Control: public, max-age=86400` 返回。
 - `.pptx` 以附件形式返回。
@@ -518,7 +574,7 @@ curl -O http://127.0.0.1:8000/v1/files/42d0c6dcaa7c4e9580c2e02c1cef7809.png
 
 ---
 
-## 8. 模型列表
+## 9. 模型列表
 
 ```http
 GET /v1/models
@@ -546,9 +602,9 @@ GET /v1/models
 
 ---
 
-## 9. 健康检查与管理接口
+## 10. 健康检查与管理接口
 
-### 9.1 GET /healthz
+### 10.1 GET /healthz
 
 无需鉴权。
 
@@ -577,7 +633,7 @@ GET /v1/models
 - `state` 可能为 `stopped`、`starting`、`ready`、`login_required`。
 - 可用于健康探测和登录态轮询。
 
-### 9.2 GET /admin/status
+### 10.2 GET /admin/status
 
 需要鉴权（若配置了 api_key）。
 
@@ -636,7 +692,7 @@ GET /v1/models
 顶层字段 `state` / `logged_in` / `queue` 等与第一个 provider 保持一致，仅用于兼容旧客户端；
 请优先使用 `providers`。
 
-### 9.3 POST /admin/relogin
+### 10.3 POST /admin/relogin
 
 需要鉴权（若配置了 api_key）。
 
@@ -663,9 +719,9 @@ POST /admin/relogin?provider=yuanbao
 
 ---
 
-## 10. 会话机制
+## 11. 会话机制
 
-### 10.1 session_id 的来源
+### 11.1 session_id 的来源
 
 按优先级：
 
@@ -678,13 +734,13 @@ POST /admin/relogin?provider=yuanbao
 - 非流式：响应头 `X-Session-Id` + 响应体顶层 `session_id`。
 - 流式：响应头 `X-Session-Id` + 首个/最后 SSE chunk 顶层 `session_id`。
 
-### 10.2 显式 session_id
+### 11.2 显式 session_id
 
 - 不存在、已失效或属于另一个 provider：404 `session_invalid`。
 - 显式 session 可以在同一 provider 内切换模型/模式。
 - 已存在会话中，system 消息忽略。
 
-### 10.3 自动匹配
+### 11.3 自动匹配
 
 - 只在同一 provider + 同一 mode 的活跃会话中查找。
 - 只比较 **user 轮次**；assistant 文本完全不参与比较。
@@ -693,7 +749,7 @@ POST /admin/relogin?provider=yuanbao
 - 选择 `k` 最大的候选；`k` 相同优先“重复回放”而不是“发送新消息”。
 - 没有候选时创建新会话。
 
-### 10.4 历史 diff 规则
+### 11.4 历史 diff 规则
 
 | 情况 | 行为 |
 |---|---|
@@ -713,7 +769,7 @@ POST /admin/relogin?provider=yuanbao
   只发送一条全新的“继续”会因首轮 user 对不上而返回 400 `history_conflict`。
 - 不要在一次请求里追加多条 user 消息。
 
-### 10.5 模式与续接
+### 11.5 模式与续接
 
 - 会话记录 `provider` 和最近使用的 `mode`。
 - 元宝页面刷新后会回到普通聊天；网关在续接时会重新进入目标模式
@@ -724,9 +780,9 @@ POST /admin/relogin?provider=yuanbao
 
 ---
 
-## 11. 附件与多模态
+## 12. 附件与多模态
 
-### 11.1 支持形式
+### 12.1 支持形式
 
 - `image_url`：
   - data URL：`data:image/png;base64,...`
@@ -736,7 +792,7 @@ POST /admin/relogin?provider=yuanbao
   - `file_data`：base64 字符串或 data URL
   - 也接受 `data` 字段作为 `file_data` 的别名
 
-### 11.2 限制
+### 12.2 限制
 
 由 `config.toml` 的 `[attach]` 控制，默认：
 
@@ -760,7 +816,7 @@ allowed_extensions = [".png", ".jpg", ..., ".pdf", ".docx", ...]
 - 附件内容不写入本地会话历史，历史只保存 user 文本和 assistant 文本；
   网页本身会保留附件上下文。
 
-### 11.3 多模态示例
+### 12.3 多模态示例
 
 ```bash
 curl http://127.0.0.1:8000/v1/chat/completions \
@@ -791,7 +847,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 
 ---
 
-## 12. 流式响应
+## 13. 流式响应
 
 请求：
 
@@ -843,7 +899,7 @@ data: [DONE]
   不会因为客户端断开而丢弃会话上下文。
 - 流式请求在整个 SSE 生命周期内占用该 provider 的队列名额。
 
-### 12.1 OpenAI SDK 流式示例
+### 13.1 OpenAI SDK 流式示例
 
 ```python
 stream = client.chat.completions.create(
@@ -857,7 +913,7 @@ for chunk in stream:
         print(delta, end="", flush=True)
 ```
 
-### 12.2 特殊模型的流式行为
+### 13.2 特殊模型的流式行为
 
 - `yuanbao-image`（chat）：生成完成后返回一个包含 4 个 markdown 链接的 content chunk。
 - `yuanbao-ppt`：摘要可能增量返回，完成后追加本地 PPTX 链接。
@@ -865,7 +921,7 @@ for chunk in stream:
 
 ---
 
-## 13. 错误格式
+## 14. 错误格式
 
 统一使用 OpenAI 风格：
 
@@ -880,7 +936,7 @@ for chunk in stream:
 }
 ```
 
-### 13.1 业务错误
+### 14.1 业务错误
 
 | HTTP | type | code | 触发场景 |
 |---|---|---|---|
@@ -909,7 +965,7 @@ for chunk in stream:
 }
 ```
 
-### 13.2 上游超时
+### 14.2 上游超时
 
 - 首字/完成超时可能返回部分内容或空字符串，`finish_reason` 仍为 `stop`。
 - 请检查 `content` 是否为空，不要只依赖 `finish_reason` 判断成功。
@@ -917,7 +973,7 @@ for chunk in stream:
 
 ---
 
-## 14. 并发与队列
+## 15. 并发与队列
 
 - 每个 provider 只有一个浏览器窗口，因此该 provider 内所有请求严格 FIFO 串行。
 - 每个请求操作页面前都会检查该 provider 的浏览器；若已关闭、崩溃或无响应，
@@ -945,7 +1001,7 @@ for chunk in stream:
 
 ---
 
-## 15. 配置项
+## 16. 配置项
 
 与 API 行为相关的配置：
 
@@ -995,13 +1051,13 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 
 优先级：环境变量 > `config.toml` > 默认值。
 
-### 15.1 生成文件目录
+### 16.1 生成文件目录
 
 - 图片和 PPT 保存在 `data/generated/`。
 - 通过 `/v1/files/{name}` 提供下载。
 - 不会自动清理；需要时手动清理旧文件。
 
-### 15.2 远程部署提示
+### 16.2 远程部署提示
 
 - 聊天模型返回的图片/PPT 链接使用 `server.host:server.port` 构造；
   若 `server.host` 为 `0.0.0.0` 或 `::`，会回退到 `127.0.0.1`。
@@ -1012,18 +1068,20 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 
 ---
 
-## 16. 兼容性与限制
+## 17. 兼容性与限制
 
-### 16.1 支持的 OpenAI 能力
+### 17.1 支持的 OpenAI 能力
 
 - Chat Completions（非流式 + SSE）
 - Images Generations（`url` / `b64_json`）
+- Videos Generations（`POST /v1/videos/generations`，`url` / `b64_json`）
+- Music Generations（`POST /v1/music/generations`）
 - 多模态 content parts（图片 + 文件）
 - `GET /v1/models`
 - OpenAI 错误格式
 - `X-Session-Id` 扩展会话
 
-### 16.2 不支持/忽略的能力
+### 17.2 不支持/忽略的能力
 
 - `tools` / `function calling`
 - `response_format`
@@ -1036,10 +1094,11 @@ FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false
 
 这些字段不会导致请求失败，但不会生效。
 
-### 16.3 网页侧行为与限制
+### 17.3 网页侧行为与限制
 
 - 免费网页版有账号额度/限流；网关只做串行排队，不放大请求。
 - 自动化操作可能违反 DeepSeek / 元宝服务条款，请使用非主力账号。
+- 豆包生成的图片带“豆包AI生成”水印、视频疑似带动态水印，网页端均无免水印入口。
 - 思考过程（DeepSeek reasoner、元宝 Thinking/Expert）默认不返回。
 - 元宝 Expert 模式没有显式 Search 开关；搜索使用 `yuanbao-hunyuan-search`（Hy3）。
 - 元宝搜索暂不返回来源 URL。
@@ -1071,6 +1130,11 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 curl http://127.0.0.1:8000/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{"model":"yuanbao-image","prompt":"一只猫，水彩风格","n":1}'
+
+# 生视频（豆包 Seedance，耗时数分钟至十余分钟）
+curl -m 1800 http://127.0.0.1:8000/v1/videos/generations \
+  -H "Content-Type: application/json" \
+  -d '{"model":"doubao-video","prompt":"a paper boat sailing on a puddle","size":"16:9","duration":6}'
 
 # 健康检查
 curl http://127.0.0.1:8000/healthz

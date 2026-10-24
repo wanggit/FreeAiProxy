@@ -9,13 +9,17 @@ from freeaiproxy.services.artifacts import GENERATED_DIR
 
 router = APIRouter()
 
-_NAME_RE = re.compile(r"^[0-9a-f]{32}\.(png|webp|jpg|pptx|mp3|wav|flac)$")
+_NAME_RE = re.compile(
+    r"^[0-9a-f]{32}\.(png|webp|jpg|pptx|mp3|wav|flac|mp4|webm)$"
+)
 
 _PPTX_TYPE = (
     "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 )
 
 _AUDIO_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".flac": "audio/flac"}
+
+_VIDEO_TYPES = {".mp4": "video/mp4", ".webm": "video/webm"}
 
 
 @router.get("/v1/files/{name}")
@@ -28,9 +32,10 @@ async def get_generated_file(name: str):
     suffix = path.suffix.lower()
     if suffix == ".pptx":
         return FileResponse(path, media_type=_PPTX_TYPE, filename=name)
-    if suffix in _AUDIO_TYPES:
+    if suffix in _AUDIO_TYPES or suffix in _VIDEO_TYPES:
+        media_type = _AUDIO_TYPES.get(suffix) or _VIDEO_TYPES[suffix]
         return FileResponse(
-            path, media_type=_AUDIO_TYPES[suffix], headers={"Cache-Control": "public, max-age=86400"}
+            path, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"}
         )
     media_type = {
         ".webp": "image/webp",

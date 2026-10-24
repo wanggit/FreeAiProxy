@@ -1,23 +1,27 @@
 # FreeAiProxy
 
-把 **DeepSeek** 与 **腾讯元宝** 网页版包装成 **OpenAI 兼容 API**。用反检测浏览器
-（Camoufox）驱动 https://chat.deepseek.com/ 和 https://yuanbao.tencent.com/ ，对外暴露
-`POST /v1/chat/completions`、`POST /v1/images/generations` 和
-`POST /v1/music/generations`，任何支持 OpenAI 协议的
+把 **DeepSeek**、**腾讯元宝**、**百度文心**、**智谱清言** 与 **字节豆包** 网页版包装成
+**OpenAI 兼容 API**。用反检测浏览器（Camoufox）驱动各站点，对外暴露
+`POST /v1/chat/completions`、`POST /v1/images/generations`、
+`POST /v1/videos/generations` 和 `POST /v1/music/generations`，任何支持 OpenAI 协议的
 客户端都能接入。
 
-- 多 Provider：DeepSeek 与元宝可同时在线，各自独立浏览器、登录态和 FIFO 队列
+- 多 Provider：五家可任意组合同时在线，各自独立浏览器、登录态和 FIFO 队列
 - DeepSeek：普通对话 + 深度思考
 - 元宝：Hy4（Expert）、Thinking、Instant、强制联网搜索、专业写作、AI 生图、PPT 生成
+- 文心：图片生成（无水印）、帮我写作、音乐生成
+- 智谱清言：GLM-5.3 深度思考、AI画图（无水印）
+- 豆包：普通对话、Seedream 生图、Seedance 视频生成、音乐生成
 - 支持流式（SSE）、会话续接、附件上传（图片 / 文档）
-- 生图与 PPT 落盘为本地文件，由网关提供下载链接
+- 生图、视频、PPT、音频落盘为本地文件，由网关提供下载链接
 - 登录一次长期复用（持久化浏览器 profile）
 - 支持无头运行；仅在需要登录时临时弹出有头浏览器，登录成功后自动切回
 
 > 完整 API 文档：[docs/API.md](docs/API.md)
 >
-> 元宝页面标定与实现细节见 [docs/YUANBAO.md](docs/YUANBAO.md)；
-> DeepSeek 设计见 [docs/DESIGN.md](docs/DESIGN.md)。
+> 各站点标定与实现细节见 [docs/YUANBAO.md](docs/YUANBAO.md)、
+> [docs/WENXIN.md](docs/WENXIN.md)、[docs/CHATGLM.md](docs/CHATGLM.md)、
+> [docs/DOUBAO.md](docs/DOUBAO.md)；DeepSeek 设计见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## 快速开始
 
@@ -26,12 +30,14 @@ uv sync
 uv run camoufox fetch        # 首次需要下载浏览器二进制（约 1.2GB）
 cp config.example.toml config.toml
 
-uv run freeaiproxy start     # 会同时启动 DeepSeek / 元宝两个有头浏览器
+uv run freeaiproxy start     # 启动网关，按 config.toml 拉起已启用的 provider
 ```
 
-首次启动时，如果某个 provider 未登录，对应浏览器窗口会等待人工登录：
-DeepSeek 用手机号/邮箱，元宝用微信 / QQ / 手机号。登录态分别保存在
-`data/profile` 和 `data/profiles/yuanbao`。
+`config.example.toml` 默认启用 DeepSeek 与元宝；文心 / 智谱清言 / 豆包为
+`enabled = false`，按需打开。首次启动时，如果某个 provider 未登录，对应浏览器窗口会
+等待人工登录（DeepSeek 手机号/邮箱，元宝微信 / QQ / 手机号，文心百度账号，
+豆包扫码 / 手机号，智谱清言手机号）。登录态分别保存在 `data/profile` 与
+`data/profiles/<name>`。
 
 服务默认监听 `http://127.0.0.1:8000`：
 
@@ -75,6 +81,8 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 - Thinking / Expert 的思考过程不会返回，只返回最终答案。
 - 每个模型每轮都会显式对齐网页上的模型/模式，同一会话可切换模型；显式传入
   `session_id` 时可在同一元宝会话内切换模式。
+- `doubao-image` / `doubao-video` 的 `size` 是宽高比而非分辨率；`doubao-video` 单次
+  生成 1 条，10s 片段实测耗时约 8–15 分钟。
 
 ### 示例
 
@@ -126,7 +134,7 @@ r = httpx.post(
 
 也支持 `{"type": "file", "file": {"filename": "a.pdf", "file_data": "<base64>"}}`
 和 `http(s)://` 远程地址（服务端下载后上传，可用 `attach.download_remote_urls = false` 关闭）。
-DeepSeek 与元宝均支持图片/文档附件；元宝图片附件可直接被 Hy4/Hy3 识别。
+五家 provider 均支持图片/文档附件；元宝图片附件可直接被 Hy4/Hy3 识别。
 
 约束见 `config.toml` 的 `[attach]`：单文件大小上限、扩展名白名单、远程下载上限。
 
@@ -145,6 +153,23 @@ curl http://127.0.0.1:8000/v1/images/generations \
   `http://127.0.0.1:8000/v1/files/<name>`。
 - `response_format` 可选 `url`（默认）或 `b64_json`。
 - 也可以用 `/v1/chat/completions` 调 `yuanbao-image`，返回 4 个 markdown 图片链接。
+- 其他生图模型：`wenxin-image`、`chatglm-image` 无水印；`doubao-image`（Seedream）
+  每次 1 张、支持 30 种风格，带“豆包AI生成”水印（网页端无免水印入口）。
+
+## 视频生成
+
+```bash
+curl -m 1800 http://127.0.0.1:8000/v1/videos/generations \
+  -H "Content-Type: application/json" \
+  -d '{"model":"doubao-video","prompt":"a paper boat sailing on a puddle, rainy day","size":"16:9","duration":6}'
+```
+
+- `size` 宽高比：`auto` / `3:4` / `4:3` / `9:16` / `16:9` / `1:1` / `21:9`；
+  `duration` 4–15 秒（等价字段 `seconds`）。
+- 走豆包网页端两轮代理流程：先出参数确认文案，网关自动回「确认」后才开始渲染；
+  实测 Seedance 2.0 Mini 10s 约 8–15 分钟，接口同步等待，请给客户端足够超时。
+- 产出 MP4，按内容魔数落盘，返回 `http://127.0.0.1:8000/v1/files/<name>.mp4`。
+- 视频疑似带网页端动态水印，无免水印下载入口——已知限制。
 
 ## 音乐生成
 
@@ -156,9 +181,11 @@ curl http://127.0.0.1:8000/v1/music/generations \
 
 - 文心「更多 → 音乐生成」：`style` 选曲风（13 种），`voice` 选音色
   （智能匹配/深情男声/甜美女声），给 `lyrics` 即切「自定义歌词」，否则「AI写歌词」。
-- 网页端约 2–3 分钟生成 1 首，接口同步等待；实测为 FLAC，存 `data/generated/`
-  并返回 `http://127.0.0.1:8000/v1/files/<name>.flac`。
-- 也可以用 `/v1/chat/completions` 调 `wenxin-music`（选项走网页默认值）。
+- `model` 换成 `doubao-music` 时额外支持 `mood`（情绪 9 种），`style`/`voice`
+  词表见 [docs/API.md](docs/API.md#7-music)。
+- 网页端约 2–3 分钟生成 1 首，接口同步等待；文心实测为 FLAC，存 `data/generated/`
+  并返回 `http://127.0.0.1:8000/v1/files/<name>.flac`；豆包产出为封面+音轨的 MP4。
+- 也可以用 `/v1/chat/completions` 调音乐模型（选项走网页默认值）。
 
 ## PPT 生成
 
@@ -181,7 +208,7 @@ PPT 由元宝 Presentation Maker 生成并自动下载原文件；生成可能�
 
 每个 provider 驱动自己的**单个浏览器窗口**，因此每个 provider 内部所有请求进入一个
 **FIFO 队列串行执行**（队列长度上限见 `worker.max_queue_len`，超出返回 429）。
-DeepSeek 与元宝使用不同浏览器，跨 provider 可以并行。
+五个 provider 使用不同浏览器，跨 provider 可以并行。
 队列状态可在 `/admin/status` 的 `providers.<name>.queue` 查看。
 
 每个需要浏览器的请求在执行前都会检查对应 provider 的 Camoufox 是否存活且可响应。
@@ -214,15 +241,15 @@ client.chat.completions.create(
 
 | 命令 | 作用 |
 |---|---|
-| `freeaiproxy start` | 启动网关（同时启动 DeepSeek / 元宝） |
-| `freeaiproxy status --provider all` | 检测登录态（`deepseek` / `yuanbao` / `all`） |
-| `freeaiproxy relogin --provider yuanbao` | 触发重新登录 |
-| `freeaiproxy profile import --browser firefox --provider yuanbao` | 从 Firefox 导入元宝登录态 |
+| `freeaiproxy start` | 启动网关（按 config.toml 拉起已启用的 provider） |
+| `freeaiproxy status --provider all` | 检测登录态（`deepseek` / `yuanbao` / `wenxin` / `chatglm` / `doubao` / `all`） |
+| `freeaiproxy relogin --provider doubao` | 触发重新登录 |
+| `freeaiproxy profile import --browser firefox --provider yuanbao` | 从 Firefox 导入登录态 |
 | `freeaiproxy profile sync --browser firefox --provider deepseek` | 覆盖式同步登录态 |
 | `freeaiproxy profile export --provider yuanbao --out yuanbao.zip` | 导出登录态 profile |
 
-导入 / 同步只支持 **Firefox 系**（Chromium 内核的 cookie 加密不兼容）。
-若 Firefox 正在运行，命令会提示先关闭它再继续。
+导入 / 同步 / 导出目前只允许 **DeepSeek 与元宝**（且只支持 **Firefox 系**——
+Chromium 内核的 cookie 加密不兼容）。若 Firefox 正在运行，命令会提示先关闭它再继续。
 
 ## 进程管理脚本
 
@@ -248,10 +275,11 @@ uv run python scripts/manage.py build      # uv build，产物在 dist/
 | 端点 | 说明 |
 |---|---|
 | `POST /v1/chat/completions` | 对话（支持 `stream: true`） |
-| `POST /v1/images/generations` | 元宝 AI 生图 |
-| `POST /v1/music/generations` | 文心音乐生成（曲风/音色/歌词） |
-| `GET /v1/models` | 模型列表（两个 provider 合并） |
-| `GET /v1/files/{name}` | 下载生成的图片 / PPTX / 音频 |
+| `POST /v1/images/generations` | 生图（元宝 / 文心 / 智谱清言 / 豆包） |
+| `POST /v1/videos/generations` | 视频生成（豆包 Seedance） |
+| `POST /v1/music/generations` | 音乐生成（文心 / 豆包，曲风/音色/歌词） |
+| `GET /v1/models` | 模型列表（已启用 provider 合并） |
+| `GET /v1/files/{name}` | 下载生成的图片 / PPTX / 音频 / 视频 |
 | `GET /healthz` | 服务与各 provider 登录态 |
 | `GET /admin/status` | 诊断信息（含各 provider 队列） |
 | `POST /admin/relogin?provider=yuanbao` | 触发指定 provider 重新登录 |
@@ -266,6 +294,19 @@ profile = "data/profile"
 [providers.yuanbao]
 enabled = true
 profile = "data/profiles/yuanbao"
+
+# 文心 / 智谱清言 / 豆包默认关闭，需要时打开：
+[providers.wenxin]
+enabled = false
+profile = "data/profiles/wenxin"
+
+[providers.chatglm]
+enabled = false
+profile = "data/profiles/chatglm"
+
+[providers.doubao]
+enabled = false
+profile = "data/profiles/doubao"
 ```
 
 - `[profile] path` 仍作为 DeepSeek 的后备 profile 路径。
@@ -274,7 +315,7 @@ profile = "data/profiles/yuanbao"
   登录成功后自动切回无头。
 - 环境变量覆盖：`FREEAIPROXY__PROVIDERS__YUANBAO__ENABLED=false`，
   规则是 `FREEAIPROXY__SECTION__KEY`，优先级环境变量 > config.toml > 默认值。
-- `data/generated/` 保存生图与 PPT 文件，不会自动清理。
+- `data/generated/` 保存生图、视频、PPT 与音频文件，不会自动清理。
 
 ## 开发
 
@@ -283,16 +324,22 @@ uv run pytest                 # 单元测试（离线，不启动浏览器）
 uv run ruff check .           # lint
 uv run mypy                   # 类型检查
 uv run python poc/yuanbao_calibrate.py   # 元宝登录/首页标定
+uv run python poc/doubao_probe.py        # 豆包登录/首页标定（其他站点见对应 docs）
 ```
 
+标定脚本 `poc/*_probe*.py` 会独占对应 profile，**不要与运行中的网关并行**。
 `scripts/e2e_check.py`、`scripts/m2_check.py` 等端到端脚本需要服务已启动且浏览器已登录。
 
 ## 注意事项
 
-- 自动化操作 DeepSeek / 元宝网页版可能违反其服务条款并有封号风险，**请使用非主力账号**。
+- 自动化操作 DeepSeek / 元宝 / 文心 / 智谱清言 / 豆包网页版可能违反其服务条款并有
+  封号风险，**请使用非主力账号**。
 - 本项目仅供个人技术研究，不得转售或对外提供服务。
 - 元宝 Expert 模式不提供显式 Search 开关；需要强制搜索请用 `yuanbao-hunyuan-search`。
 - 元宝搜索答案暂不包含来源 URL（页面来源面板未抽取），但答案正文包含来源名称。
 - 思考过程（Thinking / Expert）默认不外泄，只返回最终答案。
-- PPT 生成可能耗时数分钟；请给客户端设置足够的超时。
-- 元宝当前 UI 为英文（账号/浏览器语言决定），文案选择器按英文标定。
+- PPT 生成可能耗时数分钟、豆包视频可能耗时十余分钟；请给客户端设置足够的超时。
+- 水印：文心与智谱清言生图无水印；豆包图片带“豆包AI生成”水印、视频疑似带网页端
+  动态水印，均无免水印入口——已知限制。
+- 元宝当前 UI 为英文（账号/浏览器语言决定），文案选择器按英文标定；文心 / 智谱清言 /
+  豆包按 `zh-CN` 标定。

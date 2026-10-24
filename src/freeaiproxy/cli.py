@@ -101,7 +101,11 @@ def start(config: Path | None = typer.Option(None, "--config", help="配置文�
 @app.command()
 def status(
     config: Path | None = typer.Option(None, "--config", help="配置文件路径"),
-    provider: str = typer.Option("all", "--provider", help="deepseek / yuanbao / all"),
+    provider: str = typer.Option(
+        "all",
+        "--provider",
+        help="deepseek / yuanbao / wenxin / chatglm / doubao / all",
+    ),
 ):
     """检测当前 profile 的登录态。"""
     settings = _settings(config)
@@ -158,7 +162,11 @@ async def _probe_login(settings: Settings, provider: str) -> None:
 @app.command()
 def relogin(
     config: Path | None = typer.Option(None, "--config", help="配置文件路径"),
-    provider: str = typer.Option("deepseek", "--provider", help="deepseek / yuanbao / all"),
+    provider: str = typer.Option(
+        "deepseek",
+        "--provider",
+        help="deepseek / yuanbao / wenxin / chatglm / doubao / all",
+    ),
 ):
     """触发重新登录（服务在跑则走 admin 端点；未运行则独立引导）。"""
     settings = _settings(config)

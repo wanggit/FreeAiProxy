@@ -13,6 +13,18 @@ LOGGED_IN_SELECTORS = (
 LOGIN_BUTTON = '[data-testid="to_login_button"]'
 PLACEHOLDER = "发消息..."
 
+# Entering the image skill pops a radix subscription upsell dialog that covers
+# the whole page and intercepts every subsequent click (verified 2026-10-25 in
+# the gateway log: the skill-bar click times out on "subtree intercepts
+# pointer events"). The close control is not calibrated, so dismissal falls
+# back to Escape plus an overlay click.
+UPSELL_DIALOG = '[role="dialog"][data-state="open"]'
+UPSELL_CLOSE = (
+    '[role="dialog"][data-state="open"] [aria-label*="关闭"], '
+    '[role="dialog"][data-state="open"] [aria-label*="Close"], '
+    '[role="dialog"][data-state="open"] [data-slot="dialog-close"]'
+)
+
 COMPOSER = '[data-testid="chat_input"]'
 EDITOR = '[data-testid="chat_input_input"] [contenteditable="true"]'
 SEND_BUTTON = '[data-testid="chat_input_send_button"]'

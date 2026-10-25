@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 from playwright.async_api import Page, Response
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from freeaiproxy.config import Settings
 from freeaiproxy.engine import doubao_selectors as S
@@ -209,6 +210,9 @@ class DoubaoDriver:
                 # wait_music cannot reuse a stale track URL.
                 self._music_media = None
             await self._enter_skill(agent)
+            # The skill entry itself can pop the upsell dialog after the
+            # composer is already visible; close it before option selection.
+            await self._dismiss_upsell()
         else:
             await self._exit_skill()
             if spec.ui_model:
@@ -241,14 +245,8 @@ class DoubaoDriver:
             editor = self.page.locator(S.EDITOR).first
             if not await editor.count():
                 raise UpstreamPageChangedError("the Doubao composer is not available")
-            try:
-                await editor.click(timeout=5000)
-            except Exception:  # noqa: BLE001
-                # A promo popover (e.g. the subscription upsell that appears
-                # when entering the image skill) can intercept the click.
-                await self.page.keyboard.press("Escape")
-                await asyncio.sleep(0.5)
-                await editor.click(timeout=10000)
+            await self._close_open_panels()
+            await self._click_guarded(self.page.locator(S.EDITOR), "composer")
             await self.page.keyboard.press("Control+A")
             await self.page.keyboard.press("Backspace")
             if text:
@@ -273,6 +271,11 @@ class DoubaoDriver:
                 return
             if self.page.url != S.BASE_URL and CHAT_PATH_RE.search(self.page.url):
                 return
+        shot = Path("data/doubao_send_fail.png")
+        with contextlib.suppress(Exception):
+            await self.page.screenshot(path=str(shot), full_page=True)
+        logger.warning("doubao message not accepted; saved %s (dialog: %s)", shot,
+                       await self.page.locator(S.UPSELL_DIALOG).count())
         raise UpstreamPageChangedError("the message was not accepted by the page")
 
     # ---------------------------------------------------------------- replies
@@ -322,10 +325,15 @@ class DoubaoDriver:
         target = ratio or S.IMAGE_RATIO_AUTO
         await self._pick_menu_item(S.RATIO_CONTROL, target, prefix=True)
         await self._expect_trigger_text(S.RATIO_CONTROL, target)
+        # Picking an option applies it live but leaves the radix panel open;
+        # handing that panel to the send path steals the Enter key (verified
+        # 2026-10-25: the prompt never reached the composer).
+        await self._close_open_panels()
 
     async def select_image_style(self, style: str) -> None:
         await self._pick_menu_item(S.STYLE_CONTROL, style, prefix=True)
         await self._expect_trigger_text(S.STYLE_CONTROL, style)
+        await self._close_open_panels()
 
     async def select_video_options(
         self, ratio: str | None = None, duration: int | None = None
@@ -421,7 +429,7 @@ class DoubaoDriver:
         editor = self.page.locator(S.EDITOR).first
         if not await editor.count():
             raise UpstreamPageChangedError("the Doubao composer is not available")
-        await editor.click()
+        await self._click_guarded(self.page.locator(S.EDITOR), "composer (video confirm)")
         await self.page.keyboard.insert_text(S.VIDEO_CONFIRM_TEXT)
         await asyncio.sleep(0.4)
         await self._click_send()
@@ -579,18 +587,81 @@ class DoubaoDriver:
             await asyncio.sleep(0.5)
         raise UpstreamPageChangedError("the Doubao composer never appeared")
 
+    async def _close_open_panels(self) -> None:
+        menu = self.page.locator(S.POPUP_MENU)
+        if not (await menu.count() and await menu.first.is_visible()):
+            return
+        await self.page.keyboard.press("Escape")
+        await asyncio.sleep(0.3)
+        if await menu.count() and await menu.first.is_visible():
+            logger.warning("a Doubao option panel stayed open after Escape")
+
+    async def _dismiss_upsell(self) -> bool:
+        """Close the subscription upsell dialog if one is open.
+
+        Escape is safe here: it is only pressed while a dialog is on screen,
+        where the dialog swallows it instead of the composer (Escape around the
+        image-mode composer would drop the reference-image upload, per
+        docs/DOUBAO.md, and an open upsell blocks that upload anyway).
+        """
+        dialog = self.page.locator(S.UPSELL_DIALOG)
+        try:
+            if not (await dialog.count() and await dialog.first.is_visible()):
+                return True
+            logger.info("dismissing the Doubao upsell dialog")
+            close = self.page.locator(S.UPSELL_CLOSE)
+            if await close.count():
+                with contextlib.suppress(Exception):
+                    await close.first.click(timeout=3000)
+            if not (await dialog.count() and await dialog.first.is_visible()):
+                return True
+            with contextlib.suppress(Exception):
+                await self.page.keyboard.press("Escape")
+            with contextlib.suppress(Exception):
+                # The overlay spans the viewport; clicking its corner (outside
+                # the panel) closes a radix dialog with the default
+                # dismiss-on-interact-outside.
+                await self.page.mouse.click(1, 1)
+            await asyncio.sleep(0.5)
+            if await dialog.count() and await dialog.first.is_visible():
+                shot = Path("data/doubao_upsell_dialog.png")
+                with contextlib.suppress(Exception):
+                    await self.page.screenshot(path=str(shot))
+                logger.warning("the Doubao upsell dialog survived dismissal; saved %s", shot)
+                return False
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("doubao upsell dismissal failed: %s", exc)
+            return True
+
+    async def _click_guarded(self, locator, label: str, timeout_ms: int = 10_000) -> None:
+        """Click, closing the upsell dialog if it intercepts the action."""
+        try:
+            await locator.first.click(timeout=timeout_ms)
+        except PlaywrightTimeoutError:
+            await self._dismiss_upsell()
+            try:
+                await locator.first.click(timeout=timeout_ms)
+            except PlaywrightTimeoutError:
+                with contextlib.suppress(Exception):
+                    await locator.first.evaluate("el => el.click()")
+                    return
+                raise UpstreamPageChangedError(f"could not click the Doubao {label}") from None
+
     async def _login_visible(self) -> bool:
+        # Only the header login button proves a logged-out page. A missing or
+        # unanswerable editor check is treated as logged in: the skill
+        # composer remounts around the upsell dialog, and reading that as
+        # "not logged in" used to flip the whole provider to login_required.
         try:
             loc = self.page.locator(S.LOGIN_BUTTON)
-            if await loc.count() and await loc.first.is_visible():
-                return True
+            return bool(await loc.count() and await loc.first.is_visible())
+        except PlaywrightTimeoutError:
+            return False
         except Exception:  # noqa: BLE001
-            return True
-        editor = self.page.locator(S.EDITOR)
-        try:
-            return not await editor.count()
-        except Exception:  # noqa: BLE001
-            return True
+            if self.page.is_closed():
+                raise UpstreamPageChangedError("the Doubao page is gone") from None
+            return False
 
     async def _rate_limit_check(self) -> None:
         body = await self.page.evaluate("() => document.body.innerText.slice(0, 4000)")
@@ -653,14 +724,14 @@ class DoubaoDriver:
             loc = self.page.locator(f'[data-testid="{testid}"]')
             more = self.page.locator(f'[data-testid="{S.SKILL_MORE}"]')
             if await loc.count():
-                await loc.first.click()
+                await self._click_guarded(loc, f"{label} skill button")
                 break
             if await more.count():
-                await more.first.click()
+                await self._click_guarded(more, "skill bar More button")
                 await asyncio.sleep(1.5)
                 item = self.page.get_by_text(label, exact=True)
                 if await item.count():
-                    await item.first.click()
+                    await self._click_guarded(item, f"{label} menu item")
                     break
             if time.monotonic() >= deadline:
                 raise UpstreamPageChangedError(f"Doubao skill bar does not offer {label}")
@@ -688,7 +759,7 @@ class DoubaoDriver:
         control = self.page.locator(selector).first
         if not await control.count():
             raise UpstreamPageChangedError(f"Doubao control {selector} is not available")
-        await control.click()
+        await self._click_guarded(self.page.locator(selector), "option control")
         try:
             await self.page.locator(S.POPUP_MENU).first.wait_for(state="visible", timeout=8000)
         except Exception as exc:  # noqa: BLE001
@@ -790,7 +861,7 @@ class DoubaoDriver:
             raise UpstreamPageChangedError(
                 f"the music composer has no directive chip #{index}"
             )
-        await chips.nth(index).click()
+        await self._click_guarded(chips.nth(index), "music directive chip")
         try:
             await self.page.locator(S.POPUP_MENU).first.wait_for(state="visible", timeout=8000)
         except Exception as exc:  # noqa: BLE001
@@ -809,7 +880,9 @@ class DoubaoDriver:
             await asyncio.sleep(0.4)
             return
         editor = self.page.locator(S.EDITOR).first
-        await editor.click()
+        if not await editor.count():
+            raise UpstreamPageChangedError("the Doubao composer is not available")
+        await self._click_guarded(self.page.locator(S.EDITOR), "composer (music theme)")
         await self.page.keyboard.insert_text(text)
         await asyncio.sleep(0.4)
 
@@ -817,6 +890,13 @@ class DoubaoDriver:
         send = self.page.locator(S.SEND_BUTTON).first
         try:
             if await send.count() and await send.is_visible():
+                await send.click(timeout=8000)
+                return
+        except PlaywrightTimeoutError:
+            # An upsell dialog intercepts the click and (via the modal's
+            # pointer-events:none) the Enter fallback below, so close it first.
+            await self._dismiss_upsell()
+            with contextlib.suppress(Exception):
                 await send.click(timeout=8000)
                 return
         except Exception:  # noqa: BLE001

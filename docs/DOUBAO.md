@@ -55,6 +55,13 @@
   （如 “Seedream 5.0 Flash 专业快速”），**用前缀匹配**。
 - 比例控件无 key，`button:has(span:text("比例"))`，菜单项：
   `自动/9:16/2:3/3:4/1:1/4:3/3:2/16:9`（默认 自动）。
+- 图像比例/风格面板选完**保持打开**（实时生效），必须 Escape 关闭后再发送：
+  面板占住焦点时 Enter 落在面板里，prompt 永远进不了 composer
+  （2026-10-25 实测，`_close_open_panels`）。
+- 进入图像技能可能弹 radix 订阅 upsell（`[role="dialog"][data-state="open"]`），
+  会拦截技能栏/选项控件/composer 的一切点击：`_click_guarded` 超时后
+  `_dismiss_upsell` 再重试；未登录判定只认 `to_login_button`，composer 查询
+  异常不得判为未登录（upsell 重挂载曾把整个 provider 打成 login_required）。
 - 风格控件 `[data-input-engine-actionbar-control-key="style"]`，30 种风格见
   `doubao_selectors.IMAGE_STYLES`。
 - 菜单结构：**只能取 `[role="menu"]` 里的** `[role="menuitem"]` /

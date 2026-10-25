@@ -400,17 +400,23 @@ class BrowserManager:
                     return False
             except Exception:
                 continue
-        for text in self.login.login_hints:
-            if await self._hint_present(text):
-                return False
+        signed_in = False
         for sel in self.login.logged_in_selectors:
             loc = page.locator(sel)
             try:
                 if await loc.count() and await loc.first.is_visible():
-                    return True
+                    signed_in = True
+                    break
             except Exception:
                 continue
-        return False
+        # Login-copy hints are the weakest signal: promotional dialogs on an
+        # already-signed-in Doubao page carry "手机号登录"-style copy, so a
+        # visible composer overrides them.
+        if not signed_in:
+            for text in self.login.login_hints:
+                if await self._hint_present(text):
+                    return False
+        return signed_in
 
     async def _hint_present(self, text: str) -> bool:
         page = self.page
